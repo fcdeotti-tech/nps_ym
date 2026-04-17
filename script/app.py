@@ -12,18 +12,36 @@ st.set_page_config(page_title="Yamaha NPS Dashboard", layout="wide", initial_sid
 # 1. FUNÇÕES DE CARREGAMENTO E CAMINHOS
 # ==========================================
 
-# Identifica a pasta onde este script (app.py) está salvo
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Pega o diretório atual de trabalho do Docker (que definimos como /app)
+BASE_DIR = os.getcwd()
 
 @st.cache_data
 def load_data():
-    # Define os caminhos subindo um nível e entrando na pasta /source
-    caminho_pv = os.path.join(BASE_DIR, '..', 'source', 'PV.xlsx')
-    caminho_ve = os.path.join(BASE_DIR, '..', 'source', 'VE.xlsx')
+    # Caminhos padrões
+    caminho_pv = os.path.join(BASE_DIR, 'source', 'PV.xlsx')
+    caminho_ve = os.path.join(BASE_DIR, 'source', 'VE.xlsx')
     
-    # Verifica se os arquivos existem antes de tentar ler
+    # Tenta resolver problema de maiúsculas/minúsculas (comum no Linux)
+    if not os.path.exists(caminho_pv):
+        caminho_pv = os.path.join(BASE_DIR, 'source', 'pv.xlsx')
+        caminho_ve = os.path.join(BASE_DIR, 'source', 've.xlsx')
+
+    # RAIO-X: Se ainda assim não achar, mostra o que tem dentro do servidor!
     if not os.path.exists(caminho_pv) or not os.path.exists(caminho_ve):
-        st.error(f"Erro: Arquivos não encontrados na pasta source! \n\nProcurado em: {os.path.join(BASE_DIR, '..', 'source')}")
+        st.error("🚨 Arquivos de dados não encontrados no servidor do Google!")
+        
+        # Lista o que subiu na raiz
+        arquivos_raiz = os.listdir(BASE_DIR)
+        st.write(f"**O que o Google recebeu na raiz (`{BASE_DIR}`):**", arquivos_raiz)
+        
+        # Tenta listar o que tem na pasta source
+        pasta_source = os.path.join(BASE_DIR, 'source')
+        if os.path.exists(pasta_source):
+            arquivos_source = os.listdir(pasta_source)
+            st.write(f"**O que o Google recebeu na pasta `source`:**", arquivos_source)
+        else:
+            st.warning("⚠️ A pasta `source` não subiu para o Google Cloud! O `.gcloudignore` ou `.gitignore` bloqueou o envio dela.")
+            
         st.stop()
 
     # Leitura dos arquivos
