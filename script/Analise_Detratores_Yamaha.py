@@ -6,13 +6,19 @@ from datetime import datetime
 
 warnings.filterwarnings('ignore')
 
-# 1. DEFINIÇÃO DOS CAMINHOS
-caminho_pasta = r"C:\Users\fernando.deotti\OneDrive - Holding Specialist Researchers Brasil LTDA\Documentos\Projetos\Yamaha\NPS\Python"
-arquivo_pv = os.path.join(caminho_pasta, 'PV.xlsx')
-arquivo_ve = os.path.join(caminho_pasta, 'VE.xlsx')
+# 1. DEFINIÇÃO DOS CAMINHOS (WSL / LINUX)
+DIRETORIO_SCRIPT = os.path.dirname(os.path.abspath(__file__))
+DIRETORIO_RAIZ = os.path.dirname(DIRETORIO_SCRIPT)
+
+DIRETORIO_SOURCE = os.path.join(DIRETORIO_RAIZ, 'source')
+DIRETORIO_OUTPUT = os.path.join(DIRETORIO_RAIZ, 'output')
+
+arquivo_pv = os.path.join(DIRETORIO_SOURCE, 'PV.xlsx')
+arquivo_ve = os.path.join(DIRETORIO_SOURCE, 'VE.xlsx')
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-arquivo_saida = os.path.join(caminho_pasta, f'Analise_Detratores_Yamaha_{timestamp}.xlsx')
+arquivo_saida = os.path.join(DIRETORIO_OUTPUT, f'Analise_Detratores_Yamaha_{timestamp}.xlsx')
+
 
 # 2. CARREGAR E LIMPAR DADOS BÁSICOS
 print("Carregando bases para análise de Detratores...")
