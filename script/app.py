@@ -12,7 +12,6 @@ st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
 # 1. MAPEAMENTO DE CAMINHOS E FICHEIROS
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Volta um nível a partir de /script e entra em /output
 OUTPUT_DIR = os.path.join(os.path.dirname(BASE_DIR), 'output')
 
 @st.cache_data
@@ -20,19 +19,22 @@ def load_excel_data(file_name, sheet_name):
     path = os.path.join(OUTPUT_DIR, file_name)
     if os.path.exists(path):
         try:
-            return pd.read_excel(path, sheet_name=sheet_name)
-        except Exception as e:
-            st.error(f"Erro ao ler a aba {sheet_name}: {e}")
+            df = pd.read_excel(path, sheet_name=sheet_name)
+            
+            # TRAVA DE SEGURANÇA: Força o Linux a ler as colunas matemáticas como Número (Float) e não Texto
+            colunas_matematicas = [
+                'NPS', 'Gap', 'Contribuição', 'Peso', 'N_valido', 'Volume (N)',
+                'NPS Atual', 'NPS Potencial', 'Ganho Possível',
+                '% Detrator -', '% Detrator +', '% Neutro -', '% Neutro +', '% Promotor'
+            ]
+            for col in colunas_matematicas:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+            return df
+        except Exception:
             return pd.DataFrame()
-    else:
-        # MODO RAIO-X ATIVADO
-        st.error(f"🚨 Arquivo não encontrado no servidor: `{file_name}`")
-        if os.path.exists(OUTPUT_DIR):
-            arquivos_la = os.listdir(OUTPUT_DIR)
-            st.warning(f"📁 O que o Google tem dentro da pasta output: {arquivos_la}")
-        else:
-            st.warning(f"❌ A pasta {OUTPUT_DIR} não existe no servidor!")
-        return pd.DataFrame()
+    return pd.DataFrame()
 
 def get_top_bottom_10(df_agrupado, col_valor):
     df_sorted = df_agrupado.sort_values(col_valor, ascending=True)
@@ -297,24 +299,23 @@ if tipo_analise == "Contribuição Total":
             mostrar_tabela_formatada(df.sort_values(['Concessionária', 'Gap'], ascending=[True, False]), "Concessionarias.xlsx")
 
     with t5:
-        if dep_prefix == "VE":
-            df = aplicar_filtros_globais(load_excel_data(file, "VE_Mod_C_Sub"))
-            if not df.empty:
-                sel = st.multiselect("Filtrar Modelo", limpar(df['Modelo'].unique()), key="mod_t5")
-                if sel: df = df[df['Modelo'].isin(sel)]
-                
-                exibir_tamanho_amostra(df)
+        df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Mod_C_Sub"))
+        if not df.empty:
+            sel = st.multiselect("Filtrar Modelo", limpar(df['Modelo'].unique()), key="mod_t5")
+            if sel: df = df[df['Modelo'].isin(sel)]
+            
+            exibir_tamanho_amostra(df)
 
-                df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
-                if not df_chart.empty:
-                    st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
-                    df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
-                    fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
-                    fig.update_layout(yaxis={'categoryorder':'total ascending'})
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap'], ascending=[True, False]), "Modelos.xlsx")
-        else:
+            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
+            if not df_chart.empty:
+                st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
+                df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
+                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
+                fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig, use_container_width=True)
+                
+            mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap'], ascending=[True, False]), "Modelos.xlsx")
+        elif dep_prefix == "PV":
             st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
 
 # --- ANÁLISE DE NEUTROS / DETRATORES ---
