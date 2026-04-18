@@ -4,12 +4,51 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import io
+import streamlit_authenticator as stauth
 
 # Configuração da Página
 st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
 
 # ==========================================
-# 1. MAPEAMENTO DE CAMINHOS E FICHEIROS
+# 1. SISTEMA DE LOGIN E AUTENTICAÇÃO
+# ==========================================
+credentials = {
+    "usernames": {
+        "yamaha": {"name": "Yamaha", "password": "yamaha_nps_2026"},
+        "route": {"name": "Route", "password": "yamaha_nps_2026"},
+        "admin": {"name": "Fernando Deotti", "password": "root_specialist"}
+    }
+}
+
+# Hasheia as senhas em memória para a sessão
+stauth.Hasher.hash_passwords(credentials)
+
+authenticator = stauth.Authenticate(
+    credentials, 
+    "yamaha_nps_prod", 
+    "sig_prod_yamaha_2604", 
+    cookie_expiry_days=30
+)
+
+# Tela de Login (Bloqueia o resto do código se não estiver logado)
+if not st.session_state.get("authentication_status"):
+    col1, col2 = st.columns([1, 15])
+    with col1:
+        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Yamaha_Motor_Logo.svg/1024px-Yamaha_Motor_Logo.svg.png", width=70)
+    with col2:
+        st.title("Yamaha NPS Explorer")
+        
+    authenticator.login(location='main')
+    
+    if st.session_state.get("authentication_status") is False:
+        st.error("Usuário ou senha incorretos.")
+    elif st.session_state.get("authentication_status") is None:
+        st.warning("Por favor, insira seu usuário e senha para acessar o painel.")
+        
+    st.stop() # Interrompe a execução do dashboard aqui se não estiver logado
+
+# ==========================================
+# 2. MAPEAMENTO DE CAMINHOS E FICHEIROS
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(os.path.dirname(BASE_DIR), 'output')
@@ -19,19 +58,7 @@ def load_excel_data(file_name, sheet_name):
     path = os.path.join(OUTPUT_DIR, file_name)
     if os.path.exists(path):
         try:
-            df = pd.read_excel(path, sheet_name=sheet_name)
-            
-            # TRAVA DE SEGURANÇA: Força o Linux a ler as colunas matemáticas como Número (Float) e não Texto
-            colunas_matematicas = [
-                'NPS', 'Gap', 'Contribuição', 'Peso', 'N_valido', 'Volume (N)',
-                'NPS Atual', 'NPS Potencial', 'Ganho Possível',
-                '% Detrator -', '% Detrator +', '% Neutro -', '% Neutro +', '% Promotor'
-            ]
-            for col in colunas_matematicas:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-                    
-            return df
+            return pd.read_excel(path, sheet_name=sheet_name)
         except Exception:
             return pd.DataFrame()
     return pd.DataFrame()
@@ -74,7 +101,6 @@ def exibir_tamanho_amostra(df):
         
     st.markdown(f"<div style='text-align: right; font-size: 13px; color: #888; margin-bottom: 5px;'>Tamanho da Amostra (N): <b>{int(n):,}</b></div>".replace(',', '.'), unsafe_allow_html=True)
 
-
 def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
     if df.empty:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
@@ -103,9 +129,14 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
     st.download_button("📥 Baixar Excel", convert_df_to_excel(df_display), filename_download, "application/vnd.ms-excel")
 
 # ==========================================
-# 2. SIDEBAR - FILTROS GLOBAIS
+# 3. SIDEBAR - FILTROS GLOBAIS
 # ==========================================
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Yamaha_Motor_Logo.svg/1024px-Yamaha_Motor_Logo.svg.png", width=120)
+
+# Saudação do Usuário e Botão de Logout
+st.sidebar.markdown(f"**Olá, {st.session_state['name']}!**")
+authenticator.logout('Sair', 'sidebar')
+st.sidebar.markdown("---")
 
 departamento = st.sidebar.radio("Dep", ["Vendas (VE)", "Pós-Vendas (PV)"], label_visibility="collapsed")
 dep_prefix = "VE" if departamento == "Vendas (VE)" else "PV"
@@ -166,7 +197,7 @@ def aplicar_filtros_globais(df):
 termos_omitir_graficos = ['-', 'Não especificada', 'Nenhuma das opções acima', 'Nenhuma subcausa específica', 'Total', 'TOTAL DA CAUSA']
 
 # ==========================================
-# 3. LÓGICA DE VISUALIZAÇÃO POR TIPO
+# 4. LÓGICA DE VISUALIZAÇÃO POR TIPO
 # ==========================================
 
 if tipo_analise == "Contribuição Total":
@@ -299,23 +330,24 @@ if tipo_analise == "Contribuição Total":
             mostrar_tabela_formatada(df.sort_values(['Concessionária', 'Gap'], ascending=[True, False]), "Concessionarias.xlsx")
 
     with t5:
-        df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Mod_C_Sub"))
-        if not df.empty:
-            sel = st.multiselect("Filtrar Modelo", limpar(df['Modelo'].unique()), key="mod_t5")
-            if sel: df = df[df['Modelo'].isin(sel)]
-            
-            exibir_tamanho_amostra(df)
-
-            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
-            if not df_chart.empty:
-                st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
-                df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
-                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
-                fig.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig, use_container_width=True)
+        if dep_prefix == "VE":
+            df = aplicar_filtros_globais(load_excel_data(file, "VE_Mod_C_Sub"))
+            if not df.empty:
+                sel = st.multiselect("Filtrar Modelo", limpar(df['Modelo'].unique()), key="mod_t5")
+                if sel: df = df[df['Modelo'].isin(sel)]
                 
-            mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap'], ascending=[True, False]), "Modelos.xlsx")
-        elif dep_prefix == "PV":
+                exibir_tamanho_amostra(df)
+
+                df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
+                if not df_chart.empty:
+                    st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
+                    df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
+                    fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
+                    fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap'], ascending=[True, False]), "Modelos.xlsx")
+        else:
             st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
 
 # --- ANÁLISE DE NEUTROS / DETRATORES ---
@@ -416,7 +448,7 @@ elif tipo_analise == "Ciclo de Revisões":
                 st.info("Não há dados de Revisões para os filtros selecionados.")
 
 # ==========================================
-# 4. FOOTER / INFO
+# 5. FOOTER / INFO
 # ==========================================
 st.sidebar.markdown("---")
-st.sidebar.caption("Dados atualizados a partir da pasta /output")
+st.sidebar.caption("Dashboard Seguro: Yamaha Motors")
