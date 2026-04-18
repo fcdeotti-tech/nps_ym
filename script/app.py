@@ -21,9 +21,18 @@ def load_excel_data(file_name, sheet_name):
     if os.path.exists(path):
         try:
             return pd.read_excel(path, sheet_name=sheet_name)
-        except Exception:
+        except Exception as e:
+            st.error(f"Erro ao ler a aba {sheet_name}: {e}")
             return pd.DataFrame()
-    return pd.DataFrame()
+    else:
+        # MODO RAIO-X ATIVADO
+        st.error(f"🚨 Arquivo não encontrado no servidor: `{file_name}`")
+        if os.path.exists(OUTPUT_DIR):
+            arquivos_la = os.listdir(OUTPUT_DIR)
+            st.warning(f"📁 O que o Google tem dentro da pasta output: {arquivos_la}")
+        else:
+            st.warning(f"❌ A pasta {OUTPUT_DIR} não existe no servidor!")
+        return pd.DataFrame()
 
 def get_top_bottom_10(df_agrupado, col_valor):
     df_sorted = df_agrupado.sort_values(col_valor, ascending=True)
