@@ -12,6 +12,7 @@ st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
 # 1. MAPEAMENTO DE CAMINHOS E FICHEIROS
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Volta um nível a partir de /script e entra em /output
 OUTPUT_DIR = os.path.join(os.path.dirname(BASE_DIR), 'output')
 
 @st.cache_data
@@ -38,13 +39,10 @@ def convert_df_to_excel(df):
         df.to_excel(writer, index=False, sheet_name='Dados')
     return output.getvalue()
 
-# NOVA FUNÇÃO: Exibir Tamanho da Amostra Discreto na Aba
 def exibir_tamanho_amostra(df):
-    if df.empty:
-        return
+    if df.empty: return
     
     df_calc = df.copy()
-    # Remove as linhas totalizadoras para não somar o N em duplicado
     if 'Causa da nota de recomendação' in df_calc.columns:
         df_calc = df_calc[~df_calc['Causa da nota de recomendação'].astype(str).str.upper().isin(['TOTAL'])]
     if 'Subcausa da nota de recomendação' in df_calc.columns:
@@ -59,12 +57,9 @@ def exibir_tamanho_amostra(df):
         df_calc = df_calc[~df_calc['Modelo'].astype(str).str.upper().str.startswith('TOTAL -')]
         
     n = 0
-    if 'N_valido' in df_calc.columns: 
-        n = df_calc['N_valido'].sum()
-    elif 'Volume (N)' in df_calc.columns: 
-        n = df_calc['Volume (N)'].sum()
-    elif 'Volume' in df_calc.columns: 
-        n = df_calc['Volume'].sum()
+    if 'N_valido' in df_calc.columns: n = df_calc['N_valido'].sum()
+    elif 'Volume (N)' in df_calc.columns: n = df_calc['Volume (N)'].sum()
+    elif 'Volume' in df_calc.columns: n = df_calc['Volume'].sum()
         
     st.markdown(f"<div style='text-align: right; font-size: 13px; color: #888; margin-bottom: 5px;'>Tamanho da Amostra (N): <b>{int(n):,}</b></div>".replace(',', '.'), unsafe_allow_html=True)
 
@@ -75,13 +70,7 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
         return
 
     df_display = df.copy()
-    
-    rename_dict = {
-        'N_valido': 'Respondentes',
-        'N_%_da_coluna': '% Respondentes',
-        'N_%_Respostas_Validas': '% Respostas válidas',
-        'Gap': 'Impacto'
-    }
+    rename_dict = {'N_valido': 'Respondentes', 'N_%_da_coluna': '% Respondentes', 'N_%_Respostas_Validas': '% Respostas válidas', 'Gap': 'Impacto'}
     df_display = df_display.rename(columns=rename_dict)
     
     termos_limpar = ['-', 'Não especificada', 'Total', 'TOTAL DA CAUSA']
@@ -178,7 +167,7 @@ if tipo_analise == "Contribuição Total":
         df_c = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Tot_Causa"))
         df_s = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Tot_C_Sub"))
         
-        exibir_tamanho_amostra(df_s) # Mostra o N baseado na aba subcausa (mais granular)
+        exibir_tamanho_amostra(df_s) 
         
         if not df_c.empty:
             st.subheader("Ponte de NPS: Contribuição por Causa")
@@ -299,23 +288,24 @@ if tipo_analise == "Contribuição Total":
             mostrar_tabela_formatada(df.sort_values(['Concessionária', 'Gap'], ascending=[True, False]), "Concessionarias.xlsx")
 
     with t5:
-        df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Mod_C_Sub"))
-        if not df.empty:
-            sel = st.multiselect("Filtrar Modelo", limpar(df['Modelo'].unique()), key="mod_t5")
-            if sel: df = df[df['Modelo'].isin(sel)]
-            
-            exibir_tamanho_amostra(df)
-
-            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
-            if not df_chart.empty:
-                st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
-                df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
-                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
-                fig.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig, use_container_width=True)
+        if dep_prefix == "VE":
+            df = aplicar_filtros_globais(load_excel_data(file, "VE_Mod_C_Sub"))
+            if not df.empty:
+                sel = st.multiselect("Filtrar Modelo", limpar(df['Modelo'].unique()), key="mod_t5")
+                if sel: df = df[df['Modelo'].isin(sel)]
                 
-            mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap'], ascending=[True, False]), "Modelos.xlsx")
-        elif dep_prefix == "PV":
+                exibir_tamanho_amostra(df)
+
+                df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
+                if not df_chart.empty:
+                    st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
+                    df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
+                    fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
+                    fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap'], ascending=[True, False]), "Modelos.xlsx")
+        else:
             st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
 
 # --- ANÁLISE DE NEUTROS / DETRATORES ---
@@ -370,14 +360,17 @@ elif tipo_analise in ["Análise de Neutros", "Análise de Detratores"]:
             mostrar_tabela_formatada(df_causa, f"{foco}_Causas.xlsx")
 
     with tab5:
-        df_mod = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Modelos_{foco[:6]}"))
-        if not df_mod.empty:
-            filtro_local = st.multiselect("Filtrar Modelo", limpar(df_mod['Modelo'].unique()), key="sel_mod2")
-            if filtro_local: df_mod = df_mod[df_mod['Modelo'].isin(filtro_local)]
-            
-            exibir_tamanho_amostra(df_mod)
-            st.subheader("Visão por Modelo")
-            mostrar_tabela_formatada(df_mod, f"{foco}_Modelos.xlsx")
+        if dep_prefix == "VE":
+            df_mod = aplicar_filtros_globais(load_excel_data(file, f"VE_Modelos_{foco[:6]}"))
+            if not df_mod.empty:
+                filtro_local = st.multiselect("Filtrar Modelo", limpar(df_mod['Modelo'].unique()), key="sel_mod2")
+                if filtro_local: df_mod = df_mod[df_mod['Modelo'].isin(filtro_local)]
+                
+                exibir_tamanho_amostra(df_mod)
+                st.subheader("Visão por Modelo")
+                mostrar_tabela_formatada(df_mod, f"{foco}_Modelos.xlsx")
+        else:
+            st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
 
 # --- CICLO DE REVISÕES ---
 elif tipo_analise == "Ciclo de Revisões":
