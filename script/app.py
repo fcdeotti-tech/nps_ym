@@ -14,8 +14,9 @@ st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
 # ==========================================
 credentials = {
     "usernames": {
-        "yamaha": {"name": "Yamaha", "password": "yamaha_nps_2026"},
-        "route": {"name": "Route", "password": "yamaha_nps_2026"},
+        "diretoria_yamaha": {"name": "Diretoria Yamaha", "password": "yamaha_nps_2026"},
+        "gerencia_vendas": {"name": "Gerência de Vendas", "password": "vendas_yamaha"},
+        "gerencia_pos_vendas": {"name": "Gerência de Pós-Vendas", "password": "posvendas_yamaha"},
         "admin": {"name": "Fernando Deotti", "password": "root_specialist"}
     }
 }
