@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import os
 import io
 import streamlit_authenticator as stauth
+from streamlit_authenticator.utilities.hasher import Hasher  # <-- IMPORT NOVO PARA A VERSÃO 0.3.2
 
 # Configuração da Página
 st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
@@ -21,8 +22,8 @@ credentials = {
     }
 }
 
-# Hasheia as senhas em memória para a sessão
-stauth.Hasher.hash_passwords(credentials['usernames'])
+# Hasheia as senhas em memória para a sessão usando a nova classe Hasher
+Hasher.hash_passwords(credentials['usernames'])
 
 authenticator = stauth.Authenticate(
     credentials, 
