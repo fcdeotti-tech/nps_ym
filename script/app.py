@@ -4,50 +4,63 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import io
-import streamlit_authenticator as stauth
-from streamlit_authenticator.utilities.hasher import Hasher  # <-- IMPORT NOVO PARA A VERSÃO 0.3.2
 
 # Configuração da Página
 st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
 
 # ==========================================
-# 1. SISTEMA DE LOGIN E AUTENTICAÇÃO
+# 1. SISTEMA DE LOGIN NATIVO (À Prova de Falhas)
 # ==========================================
-credentials = {
-    "usernames": {
-        "diretoria_yamaha": {"name": "Diretoria Yamaha", "password": "yamaha_nps_2026"},
-        "gerencia_vendas": {"name": "Gerência de Vendas", "password": "vendas_yamaha"},
-        "gerencia_pos_vendas": {"name": "Gerência de Pós-Vendas", "password": "posvendas_yamaha"},
-        "admin": {"name": "Fernando Deotti", "password": "root_specialist"}
-    }
+# Dicionário de usuários aprovados
+USUARIOS = {
+    "diretoria_yamaha": {"nome": "Diretoria Yamaha", "senha": "yamaha_nps_2026"},
+    "gerencia_vendas": {"nome": "Gerência de Vendas", "senha": "vendas_yamaha"},
+    "gerencia_pos_vendas": {"nome": "Gerência de Pós-Vendas", "senha": "posvendas_yamaha"},
+    "admin": {"nome": "Fernando Deotti", "senha": "root_specialist"}
 }
 
-# Hasheia as senhas em memória para a sessão usando a nova classe Hasher
-Hasher.hash_passwords(credentials['usernames'])
+# Inicializa o estado de controle de acesso
+if "autenticado" not in st.session_state:
+    st.session_state["autenticado"] = False
 
-authenticator = stauth.Authenticate(
-    credentials, 
-    "yamaha_nps_prod", 
-    "sig_prod_yamaha_2604", 
-    cookie_expiry_days=30
-)
+# Função que valida a senha
+def verificar_login():
+    usuario = st.session_state["campo_usuario"]
+    senha = st.session_state["campo_senha"]
+    
+    if usuario in USUARIOS and USUARIOS[usuario]["senha"] == senha:
+        st.session_state["autenticado"] = True
+        st.session_state["nome_usuario"] = USUARIOS[usuario]["nome"]
+        st.session_state["erro_login"] = False
+    else:
+        st.session_state["erro_login"] = True
 
-# Tela de Login (Bloqueia o resto do código se não estiver logado)
-if not st.session_state.get("authentication_status"):
+# Função para sair do painel
+def fazer_logout():
+    st.session_state["autenticado"] = False
+    st.session_state["nome_usuario"] = ""
+
+# --- DESENHO DA TELA DE LOGIN ---
+if not st.session_state["autenticado"]:
     col1, col2 = st.columns([1, 15])
     with col1:
         st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Yamaha_Motor_Logo.svg/1024px-Yamaha_Motor_Logo.svg.png", width=70)
     with col2:
         st.title("Yamaha NPS Explorer")
-        
-    authenticator.login(location='main')
     
-    if st.session_state.get("authentication_status") is False:
-        st.error("Usuário ou senha incorretos.")
-    elif st.session_state.get("authentication_status") is None:
-        st.warning("Por favor, insira seu usuário e senha para acessar o painel.")
+    st.markdown("---")
+    
+    col_login, col_vazia = st.columns([1, 2])
+    with col_login:
+        st.subheader("Acesso Restrito")
+        st.text_input("Usuário", key="campo_usuario")
+        st.text_input("Senha", type="password", key="campo_senha")
+        st.button("Entrar", on_click=verificar_login)
         
-    st.stop() # Interrompe a execução do dashboard aqui se não estiver logado
+        if st.session_state.get("erro_login"):
+            st.error("Usuário ou senha incorretos. Tente novamente.")
+            
+    st.stop() # Bloqueia a execução do dashboard aqui se não estiver logado
 
 # ==========================================
 # 2. MAPEAMENTO DE CAMINHOS E FICHEIROS
@@ -62,7 +75,7 @@ def load_excel_data(file_name, sheet_name):
         try:
             df = pd.read_excel(path, sheet_name=sheet_name)
             
-            # TRAVA DE SEGURANÇA: Força o Linux a ler as colunas matemáticas como Número (Float) e não Texto
+            # TRAVA DE SEGURANÇA PARA LINUX
             colunas_matematicas = [
                 'NPS', 'Gap', 'Contribuição', 'Peso', 'N_valido', 'Volume (N)',
                 'NPS Atual', 'NPS Potencial', 'Ganho Possível',
@@ -74,7 +87,6 @@ def load_excel_data(file_name, sheet_name):
                     
             return df
         except Exception as e:
-            # MOSTRA O ERRO NA TELA EM VEZ DE ESCONDER
             st.error(f"Erro ao ler a aba '{sheet_name}': {e}")
             return pd.DataFrame()
     else:
@@ -151,9 +163,9 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
 # ==========================================
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Yamaha_Motor_Logo.svg/1024px-Yamaha_Motor_Logo.svg.png", width=120)
 
-# Saudação do Usuário e Botão de Logout
-st.sidebar.markdown(f"**Olá, {st.session_state['name']}!**")
-authenticator.logout('Sair', 'sidebar')
+# Saudação do Usuário e Botão de Logout Nativos
+st.sidebar.markdown(f"**Olá, {st.session_state['nome_usuario']}!**")
+st.sidebar.button("Sair", on_click=fazer_logout)
 st.sidebar.markdown("---")
 
 departamento = st.sidebar.radio("Dep", ["Vendas (VE)", "Pós-Vendas (PV)"], label_visibility="collapsed")
