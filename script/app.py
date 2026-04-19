@@ -4,12 +4,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import io
+import re
 
 # Configuração da Página
 st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
 
 # ==========================================
-# 1. SISTEMA DE LOGIN NATIVO
+# 1. SISTEMA DE LOGIN NATIVO (À Prova de Falhas)
 # ==========================================
 USUARIOS = {
     "diretoria_yamaha": {"nome": "Diretoria Yamaha", "senha": "yamaha_nps_2026"},
@@ -57,6 +58,22 @@ if not st.session_state["autenticado"]:
     st.stop()
 
 # ==========================================
+# EXTRATOR NUMÉRICO BLINDADO
+# ==========================================
+def limpar_numero(val):
+    if pd.isna(val): return 0.0
+    if isinstance(val, (int, float)): return float(val)
+    try:
+        val_str = str(val).strip()
+        # Troca vírgula por ponto e traços matemáticos (Unicode) por hífen padrão
+        val_str = val_str.replace(',', '.').replace('−', '-').replace(' ', '')
+        # Remove qualquer coisa que não seja número, ponto ou hífen
+        val_limpo = re.sub(r'[^\d\.\-]', '', val_str)
+        return float(val_limpo) if val_limpo and val_limpo != '-' else 0.0
+    except:
+        return 0.0
+
+# ==========================================
 # 2. MAPEAMENTO DE CAMINHOS E FICHEIROS
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -68,24 +85,25 @@ def load_excel_data(file_name, sheet_name):
     if os.path.exists(path):
         try:
             df = pd.read_excel(path, sheet_name=sheet_name, engine='openpyxl')
-            
-            # Corrige espaços invisíveis nos nomes das colunas
             df.columns = df.columns.str.strip()
             
-            # Limpeza segura para o Linux (apenas conversão de sinais e decimais)
             colunas_alvo = [
-                'NPS', 'Gap', 'Contribuição', 'Peso', 'N_valido', 'Volume (N)', 'Volume',
-                'NPS Atual', 'NPS Potencial', 'Ganho Possível'
+                'NPS', 'Gap', 'Impacto', 'Contribuição', 'Peso', 'N_valido', 'Respondentes', 
+                'Volume (N)', 'Volume', 'NPS Atual', 'NPS Potencial', 'Ganho Possível'
             ]
             
+            # Aplica o Extrator Matemático em todas as colunas sensíveis
             for col in colunas_alvo:
                 if col in df.columns:
-                    if df[col].dtype == 'object':
-                        # Troca a vírgula por ponto e o sinal de menos especial pelo normal
-                        df[col] = df[col].astype(str).str.replace(',', '.', regex=False).str.replace('−', '-', regex=False)
-                    # Converte para numérico
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-                    
+                    df[col] = df[col].apply(limpar_numero)
+            
+            # Padroniza a coluna "Impacto" para matar o bug do PowerBI
+            if 'Gap' in df.columns and 'Impacto' not in df.columns:
+                df = df.rename(columns={'Gap': 'Impacto'})
+            elif 'Gap' in df.columns and 'Impacto' in df.columns:
+                df['Impacto'] = df['Gap']
+                df = df.drop(columns=['Gap'])
+                
             return df
         except Exception as e:
             st.error(f"Erro ao ler a aba '{sheet_name}': {e}")
@@ -121,6 +139,7 @@ def exibir_tamanho_amostra(df):
         
     n = 0
     if 'N_valido' in df_calc.columns: n = df_calc['N_valido'].sum()
+    elif 'Respondentes' in df_calc.columns: n = df_calc['Respondentes'].sum()
     elif 'Volume (N)' in df_calc.columns: n = df_calc['Volume (N)'].sum()
     elif 'Volume' in df_calc.columns: n = df_calc['Volume'].sum()
         
@@ -132,12 +151,8 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
         return
 
     df_display = df.copy()
-    
-    # Previne o conflito de colunas duplicadas: mata o "Impacto" falso do PowerBI antes de renomear o Gap
-    if 'Gap' in df_display.columns and 'Impacto' in df_display.columns:
-        df_display = df_display.drop(columns=['Impacto'])
         
-    rename_dict = {'N_valido': 'Respondentes', 'N_%_da_coluna': '% Respondentes', 'N_%_Respostas_Validas': '% Respostas válidas', 'Gap': 'Impacto'}
+    rename_dict = {'N_valido': 'Respondentes', 'N_%_da_coluna': '% Respondentes', 'N_%_Respostas_Validas': '% Respostas válidas'}
     df_display = df_display.rename(columns=rename_dict)
     
     termos_limpar = ['-', 'Não especificada', 'Total', 'TOTAL DA CAUSA']
@@ -206,7 +221,7 @@ def aplicar_filtros_globais(df):
     if f_nps:
         col = 'NPS' if 'NPS' in df.columns else ('NPS Atual' if 'NPS Atual' in df.columns else None)
         if col:
-            val = pd.to_numeric(df[col], errors='coerce')
+            val = df[col]
             m = []
             if "Menor que 0" in f_nps: m.append(val < 0)
             if "0 a 49" in f_nps: m.append((val >= 0) & (val < 50))
@@ -218,9 +233,9 @@ def aplicar_filtros_globais(df):
                 df = df[mask]
 
     if f_imp:
-        col = 'Gap' if 'Gap' in df.columns else ('Ganho Possível' if 'Ganho Possível' in df.columns else None)
+        col = 'Impacto' if 'Impacto' in df.columns else ('Ganho Possível' if 'Ganho Possível' in df.columns else None)
         if col:
-            val = pd.to_numeric(df[col], errors='coerce')
+            val = df[col]
             if "Positivo" in f_imp and "Negativo" not in f_imp: df = df[val >= 0]
             elif "Negativo" in f_imp and "Positivo" not in f_imp: df = df[val < 0]
             
@@ -283,11 +298,7 @@ if tipo_analise == "Contribuição Total":
                 st.subheader("Matriz de Impacto por Subcausa")
                 df_gap = df_s[~df_s['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
                 
-                if 'Gap' in df_gap.columns:
-                    # Mata o impacto falso antes de renomear
-                    if 'Impacto' in df_gap.columns: df_gap = df_gap.drop(columns=['Impacto'])
-                    df_gap = df_gap.rename(columns={'Gap': 'Impacto'})
-                    df_gap = df_gap.dropna(subset=['Impacto'])
+                if 'Impacto' in df_gap.columns:
                     df_gap = df_gap.sort_values('Impacto', ascending=True)
 
                     if not df_gap.empty:
@@ -308,17 +319,15 @@ if tipo_analise == "Contribuição Total":
             
             exibir_tamanho_amostra(df)
             df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
-            if not df_chart.empty and 'Gap' in df_chart.columns:
+            if not df_chart.empty and 'Impacto' in df_chart.columns:
                 st.subheader("Visão Geral de Impacto")
-                df_chart_agg = df_chart.groupby('Região')['Gap'].sum().reset_index()
-                if 'Impacto' in df_chart_agg.columns: df_chart_agg = df_chart_agg.drop(columns=['Impacto'])
-                df_chart_agg = df_chart_agg.rename(columns={'Gap': 'Impacto'})
+                df_chart_agg = df_chart.groupby('Região')['Impacto'].sum().reset_index()
                 
                 fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Região', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
-            mostrar_tabela_formatada(df.sort_values(['Região', 'Gap' if 'Gap' in df.columns else 'Região'], ascending=[True, False]), "Regioes.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Região', 'Impacto'], ascending=[True, False]), "Regioes.xlsx")
 
     with t3:
         df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Grup_C_Sub" if dep_prefix=="VE" else f"PV_Tot_Grup_C_Sub"))
@@ -331,17 +340,15 @@ if tipo_analise == "Contribuição Total":
             
             exibir_tamanho_amostra(df)
             df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
-            if not df_chart.empty and 'Gap' in df_chart.columns:
+            if not df_chart.empty and 'Impacto' in df_chart.columns:
                 st.subheader("Top 10 / Bottom 10 Impactos por Grupo")
-                df_chart_agg = df_chart.groupby('Grupo')['Gap'].sum().reset_index()
-                if 'Impacto' in df_chart_agg.columns: df_chart_agg = df_chart_agg.drop(columns=['Impacto'])
-                df_chart_agg = df_chart_agg.rename(columns={'Gap': 'Impacto'})
+                df_chart_agg = df_chart.groupby('Grupo')['Impacto'].sum().reset_index()
                 
                 fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Grupo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
-            mostrar_tabela_formatada(df.sort_values(['Grupo', 'Gap' if 'Gap' in df.columns else 'Grupo'], ascending=[True, False]), "Grupos.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Grupo', 'Impacto'], ascending=[True, False]), "Grupos.xlsx")
 
     with t4:
         df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Conc_C_Sub" if dep_prefix=="VE" else f"PV_Tot_Conc_C_Sub"))
@@ -356,17 +363,15 @@ if tipo_analise == "Contribuição Total":
             
             exibir_tamanho_amostra(df)
             df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
-            if not df_chart.empty and 'Gap' in df_chart.columns:
+            if not df_chart.empty and 'Impacto' in df_chart.columns:
                 st.subheader("Top 10 / Bottom 10 Impactos por Concessionária")
-                df_chart_agg = df_chart.groupby('Concessionária')['Gap'].sum().reset_index()
-                if 'Impacto' in df_chart_agg.columns: df_chart_agg = df_chart_agg.drop(columns=['Impacto'])
-                df_chart_agg = df_chart_agg.rename(columns={'Gap': 'Impacto'})
+                df_chart_agg = df_chart.groupby('Concessionária')['Impacto'].sum().reset_index()
                 
                 fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Concessionária', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
-            mostrar_tabela_formatada(df.sort_values(['Concessionária', 'Gap' if 'Gap' in df.columns else 'Concessionária'], ascending=[True, False]), "Concessionarias.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Concessionária', 'Impacto'], ascending=[True, False]), "Concessionarias.xlsx")
 
     with t5:
         if dep_prefix == "VE":
@@ -377,17 +382,15 @@ if tipo_analise == "Contribuição Total":
                 
                 exibir_tamanho_amostra(df)
                 df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
-                if not df_chart.empty and 'Gap' in df_chart.columns:
+                if not df_chart.empty and 'Impacto' in df_chart.columns:
                     st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
-                    df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index()
-                    if 'Impacto' in df_chart_agg.columns: df_chart_agg = df_chart_agg.drop(columns=['Impacto'])
-                    df_chart_agg = df_chart_agg.rename(columns={'Gap': 'Impacto'})
+                    df_chart_agg = df_chart.groupby('Modelo')['Impacto'].sum().reset_index()
                     
                     fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
                     fig.update_layout(yaxis={'categoryorder':'total ascending'})
                     st.plotly_chart(fig, use_container_width=True)
                     
-                mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap' if 'Gap' in df.columns else 'Modelo'], ascending=[True, False]), "Modelos.xlsx")
+                mostrar_tabela_formatada(df.sort_values(['Modelo', 'Impacto'], ascending=[True, False]), "Modelos.xlsx")
         else:
             st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
 
