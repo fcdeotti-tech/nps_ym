@@ -11,7 +11,6 @@ st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
 # ==========================================
 # 1. SISTEMA DE LOGIN NATIVO (À Prova de Falhas)
 # ==========================================
-# Dicionário de usuários aprovados
 USUARIOS = {
     "diretoria_yamaha": {"nome": "Diretoria Yamaha", "senha": "yamaha_nps_2026"},
     "gerencia_vendas": {"nome": "Gerência de Vendas", "senha": "vendas_yamaha"},
@@ -19,11 +18,9 @@ USUARIOS = {
     "admin": {"nome": "Fernando Deotti", "senha": "root_specialist"}
 }
 
-# Inicializa o estado de controle de acesso
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
-# Função que valida a senha
 def verificar_login():
     usuario = st.session_state["campo_usuario"]
     senha = st.session_state["campo_senha"]
@@ -35,12 +32,10 @@ def verificar_login():
     else:
         st.session_state["erro_login"] = True
 
-# Função para sair do painel
 def fazer_logout():
     st.session_state["autenticado"] = False
     st.session_state["nome_usuario"] = ""
 
-# --- DESENHO DA TELA DE LOGIN ---
 if not st.session_state["autenticado"]:
     col1, col2 = st.columns([1, 15])
     with col1:
@@ -60,7 +55,7 @@ if not st.session_state["autenticado"]:
         if st.session_state.get("erro_login"):
             st.error("Usuário ou senha incorretos. Tente novamente.")
             
-    st.stop() # Bloqueia a execução do dashboard aqui se não estiver logado
+    st.stop()
 
 # ==========================================
 # 2. MAPEAMENTO DE CAMINHOS E FICHEIROS
@@ -73,10 +68,9 @@ def load_excel_data(file_name, sheet_name):
     path = os.path.join(OUTPUT_DIR, file_name)
     if os.path.exists(path):
         try:
-            # engine openpyxl garante que o Linux leia a planilha igual ao Windows
             df = pd.read_excel(path, sheet_name=sheet_name, engine='openpyxl')
             
-            # TRAVA DE SEGURANÇA PARA LINUX E NÚMEROS BRASILEIROS (Incluindo Impacto e Respondentes)
+            # Limpeza extrema na raiz
             colunas_matematicas = [
                 'NPS', 'Gap', 'Impacto', 'Contribuição', 'Peso', 'N_valido', 'Respondentes', 'Volume (N)',
                 'NPS Atual', 'NPS Potencial', 'Ganho Possível',
@@ -84,11 +78,9 @@ def load_excel_data(file_name, sheet_name):
             ]
             for col in colunas_matematicas:
                 if col in df.columns:
-                    # Se o Linux ler como texto, remove espaços, troca vírgula por ponto e corrige o sinal de menos (Unicode)
                     if df[col].dtype == 'object':
+                        # Troca vírgulas e limpa lixo invisível
                         df[col] = df[col].astype(str).str.strip().str.replace(',', '.', regex=False).str.replace('−', '-', regex=False)
-                    
-                    # Converte forçadamente para número
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
                     
             return df
@@ -166,13 +158,13 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
     st.download_button("📥 Baixar Excel", convert_df_to_excel(df_display), filename_download, "application/vnd.ms-excel")
 
 # ==========================================
-# 3. SIDEBAR - FILTROS GLOBAIS E LOGOUT
+# 3. SIDEBAR - FILTROS GLOBAIS
 # ==========================================
 st.sidebar.markdown("<h1>🏍️</h1>", unsafe_allow_html=True)
 
-# Botão de Logout Nativo
+st.sidebar.markdown(f"**Olá, {st.session_state['nome_usuario']}!**")
 if st.sidebar.button("Sair (Logout)"):
-    st.session_state["autenticado"] = False
+    fazer_logout()
     try:
         st.rerun()
     except AttributeError:
@@ -295,20 +287,22 @@ if tipo_analise == "Contribuição Total":
 
             if not df_s.empty:
                 st.subheader("Matriz de Impacto por Subcausa")
-                # Se o nome já for Impacto nativamente, o rename simplesmente ignora
-                df_gap = df_s[~df_s['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
-                if 'Gap' in df_gap.columns:
-                    df_gap = df_gap.rename(columns={'Gap': 'Impacto'})
+                df_gap = df_s[~df_s['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
                 
-                # Forçamos a conversão garantida antes do gráfico
-                df_gap['Impacto'] = pd.to_numeric(df_gap['Impacto'], errors='coerce').fillna(0.0)
-                df_gap = df_gap.sort_values('Impacto', ascending=True)
+                # Exterminador de Textos: Força a criação de uma coluna puramente numérica para o Plotly
+                col_impacto = 'Gap' if 'Gap' in df_gap.columns else ('Impacto' if 'Impacto' in df_gap.columns else None)
+                if col_impacto:
+                    df_gap['Valor_Eixo'] = pd.to_numeric(df_gap[col_impacto], errors='coerce').fillna(0.0)
+                    df_gap = df_gap.sort_values('Valor_Eixo', ascending=True)
 
-                if not df_gap.empty:
-                    fig_gap = px.bar(df_gap, x='Impacto', y='Subcausa da nota de recomendação', orientation='h', 
-                                     color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
-                    fig_gap.update_layout(yaxis={'categoryorder':'total ascending'}) 
-                    st.plotly_chart(fig_gap, use_container_width=True)
+                    if not df_gap.empty:
+                        fig_gap = px.bar(
+                            df_gap, x='Valor_Eixo', y='Subcausa da nota de recomendação', 
+                            orientation='h', color='Valor_Eixo', color_continuous_scale='RdYlGn', 
+                            text_auto='.1f', labels={'Valor_Eixo': 'Impacto', 'Subcausa da nota de recomendação': 'Subcausa'}
+                        )
+                        fig_gap.update_layout(yaxis={'categoryorder':'total ascending'}) 
+                        st.plotly_chart(fig_gap, use_container_width=True)
 
             st.subheader("Impacto Consolidado por Causa")
             mostrar_tabela_formatada(df_c, "Nacional_Causa.xlsx")
@@ -323,18 +317,23 @@ if tipo_analise == "Contribuição Total":
             
             exibir_tamanho_amostra(df)
             
-            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
+            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
             if not df_chart.empty:
                 st.subheader("Visão Geral de Impacto")
-                coluna_gap = 'Impacto' if 'Impacto' in df_chart.columns else 'Gap'
-                df_chart[coluna_gap] = pd.to_numeric(df_chart[coluna_gap], errors='coerce').fillna(0.0)
-                df_chart_agg = df_chart.groupby('Região')[coluna_gap].sum().reset_index().rename(columns={coluna_gap: 'Impacto'})
+                col_impacto = 'Gap' if 'Gap' in df_chart.columns else ('Impacto' if 'Impacto' in df_chart.columns else None)
+                if col_impacto:
+                    df_chart['Valor_Eixo'] = pd.to_numeric(df_chart[col_impacto], errors='coerce').fillna(0.0)
+                    df_chart_agg = df_chart.groupby('Região')['Valor_Eixo'].sum().reset_index()
+                    
+                    fig = px.bar(
+                        get_top_bottom_10(df_chart_agg, 'Valor_Eixo'), x='Valor_Eixo', y='Região', 
+                        orientation='h', color='Valor_Eixo', color_continuous_scale='RdYlGn', 
+                        text_auto='.1f', labels={'Valor_Eixo': 'Impacto'}
+                    )
+                    fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                    st.plotly_chart(fig, use_container_width=True)
                 
-                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Região', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
-                fig.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig, use_container_width=True)
-                
-            mostrar_tabela_formatada(df.sort_values(['Região', coluna_gap], ascending=[True, False]), "Regioes.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Região', col_impacto if col_impacto else 'Região'], ascending=[True, False]), "Regioes.xlsx")
 
     with t3:
         df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Grup_C_Sub" if dep_prefix=="VE" else f"PV_Tot_Grup_C_Sub"))
@@ -347,18 +346,23 @@ if tipo_analise == "Contribuição Total":
             
             exibir_tamanho_amostra(df)
             
-            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
+            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
             if not df_chart.empty:
                 st.subheader("Top 10 / Bottom 10 Impactos por Grupo")
-                coluna_gap = 'Impacto' if 'Impacto' in df_chart.columns else 'Gap'
-                df_chart[coluna_gap] = pd.to_numeric(df_chart[coluna_gap], errors='coerce').fillna(0.0)
-                df_chart_agg = df_chart.groupby('Grupo')[coluna_gap].sum().reset_index().rename(columns={coluna_gap: 'Impacto'})
+                col_impacto = 'Gap' if 'Gap' in df_chart.columns else ('Impacto' if 'Impacto' in df_chart.columns else None)
+                if col_impacto:
+                    df_chart['Valor_Eixo'] = pd.to_numeric(df_chart[col_impacto], errors='coerce').fillna(0.0)
+                    df_chart_agg = df_chart.groupby('Grupo')['Valor_Eixo'].sum().reset_index()
+                    
+                    fig = px.bar(
+                        get_top_bottom_10(df_chart_agg, 'Valor_Eixo'), x='Valor_Eixo', y='Grupo', 
+                        orientation='h', color='Valor_Eixo', color_continuous_scale='RdYlGn', 
+                        text_auto='.1f', labels={'Valor_Eixo': 'Impacto'}
+                    )
+                    fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                    st.plotly_chart(fig, use_container_width=True)
                 
-                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Grupo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
-                fig.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig, use_container_width=True)
-                
-            mostrar_tabela_formatada(df.sort_values(['Grupo', coluna_gap], ascending=[True, False]), "Grupos.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Grupo', col_impacto if col_impacto else 'Grupo'], ascending=[True, False]), "Grupos.xlsx")
 
     with t4:
         df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Conc_C_Sub" if dep_prefix=="VE" else f"PV_Tot_Conc_C_Sub"))
@@ -373,18 +377,23 @@ if tipo_analise == "Contribuição Total":
             
             exibir_tamanho_amostra(df)
 
-            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
+            df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
             if not df_chart.empty:
                 st.subheader("Top 10 / Bottom 10 Impactos por Concessionária")
-                coluna_gap = 'Impacto' if 'Impacto' in df_chart.columns else 'Gap'
-                df_chart[coluna_gap] = pd.to_numeric(df_chart[coluna_gap], errors='coerce').fillna(0.0)
-                df_chart_agg = df_chart.groupby('Concessionária')[coluna_gap].sum().reset_index().rename(columns={coluna_gap: 'Impacto'})
+                col_impacto = 'Gap' if 'Gap' in df_chart.columns else ('Impacto' if 'Impacto' in df_chart.columns else None)
+                if col_impacto:
+                    df_chart['Valor_Eixo'] = pd.to_numeric(df_chart[col_impacto], errors='coerce').fillna(0.0)
+                    df_chart_agg = df_chart.groupby('Concessionária')['Valor_Eixo'].sum().reset_index()
+                    
+                    fig = px.bar(
+                        get_top_bottom_10(df_chart_agg, 'Valor_Eixo'), x='Valor_Eixo', y='Concessionária', 
+                        orientation='h', color='Valor_Eixo', color_continuous_scale='RdYlGn', 
+                        text_auto='.1f', labels={'Valor_Eixo': 'Impacto'}
+                    )
+                    fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                    st.plotly_chart(fig, use_container_width=True)
                 
-                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Concessionária', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
-                fig.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig, use_container_width=True)
-                
-            mostrar_tabela_formatada(df.sort_values(['Concessionária', coluna_gap], ascending=[True, False]), "Concessionarias.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Concessionária', col_impacto if col_impacto else 'Concessionária'], ascending=[True, False]), "Concessionarias.xlsx")
 
     with t5:
         if dep_prefix == "VE":
@@ -395,18 +404,23 @@ if tipo_analise == "Contribuição Total":
                 
                 exibir_tamanho_amostra(df)
 
-                df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
+                df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
                 if not df_chart.empty:
                     st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
-                    coluna_gap = 'Impacto' if 'Impacto' in df_chart.columns else 'Gap'
-                    df_chart[coluna_gap] = pd.to_numeric(df_chart[coluna_gap], errors='coerce').fillna(0.0)
-                    df_chart_agg = df_chart.groupby('Modelo')[coluna_gap].sum().reset_index().rename(columns={coluna_gap: 'Impacto'})
+                    col_impacto = 'Gap' if 'Gap' in df_chart.columns else ('Impacto' if 'Impacto' in df_chart.columns else None)
+                    if col_impacto:
+                        df_chart['Valor_Eixo'] = pd.to_numeric(df_chart[col_impacto], errors='coerce').fillna(0.0)
+                        df_chart_agg = df_chart.groupby('Modelo')['Valor_Eixo'].sum().reset_index()
+                        
+                        fig = px.bar(
+                            get_top_bottom_10(df_chart_agg, 'Valor_Eixo'), x='Valor_Eixo', y='Modelo', 
+                            orientation='h', color='Valor_Eixo', color_continuous_scale='RdYlGn', 
+                            text_auto='.1f', labels={'Valor_Eixo': 'Impacto'}
+                        )
+                        fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                        st.plotly_chart(fig, use_container_width=True)
                     
-                    fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
-                    fig.update_layout(yaxis={'categoryorder':'total ascending'})
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                mostrar_tabela_formatada(df.sort_values(['Modelo', coluna_gap], ascending=[True, False]), "Modelos.xlsx")
+                mostrar_tabela_formatada(df.sort_values(['Modelo', col_impacto if col_impacto else 'Modelo'], ascending=[True, False]), "Modelos.xlsx")
         else:
             st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
 
