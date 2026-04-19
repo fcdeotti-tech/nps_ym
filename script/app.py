@@ -73,9 +73,10 @@ def load_excel_data(file_name, sheet_name):
     path = os.path.join(OUTPUT_DIR, file_name)
     if os.path.exists(path):
         try:
-            df = pd.read_excel(path, sheet_name=sheet_name)
+            # engine openpyxl garante que o Linux leia a planilha igual ao Windows
+            df = pd.read_excel(path, sheet_name=sheet_name, engine='openpyxl')
             
-            # TRAVA DE SEGURANÇA PARA LINUX
+            # TRAVA DE SEGURANÇA PARA LINUX E NÚMEROS BRASILEIROS
             colunas_matematicas = [
                 'NPS', 'Gap', 'Contribuição', 'Peso', 'N_valido', 'Volume (N)',
                 'NPS Atual', 'NPS Potencial', 'Ganho Possível',
@@ -83,7 +84,12 @@ def load_excel_data(file_name, sheet_name):
             ]
             for col in colunas_matematicas:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    # Se o Linux ler como texto (ex: "-1,5"), remove espaços e troca vírgula por ponto
+                    if df[col].dtype == 'object':
+                        df[col] = df[col].astype(str).str.strip().str.replace(',', '.', regex=False)
+                    
+                    # Converte para número forçadamente e substitui falhas/nulos por 0.0
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
                     
             return df
         except Exception as e:
