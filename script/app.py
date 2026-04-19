@@ -59,10 +59,26 @@ def load_excel_data(file_name, sheet_name):
     path = os.path.join(OUTPUT_DIR, file_name)
     if os.path.exists(path):
         try:
-            return pd.read_excel(path, sheet_name=sheet_name)
-        except Exception:
+            df = pd.read_excel(path, sheet_name=sheet_name)
+            
+            # TRAVA DE SEGURANÇA: Força o Linux a ler as colunas matemáticas como Número (Float) e não Texto
+            colunas_matematicas = [
+                'NPS', 'Gap', 'Contribuição', 'Peso', 'N_valido', 'Volume (N)',
+                'NPS Atual', 'NPS Potencial', 'Ganho Possível',
+                '% Detrator -', '% Detrator +', '% Neutro -', '% Neutro +', '% Promotor', '% no Segmento'
+            ]
+            for col in colunas_matematicas:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+            return df
+        except Exception as e:
+            # MOSTRA O ERRO NA TELA EM VEZ DE ESCONDER
+            st.error(f"Erro ao ler a aba '{sheet_name}': {e}")
             return pd.DataFrame()
-    return pd.DataFrame()
+    else:
+        st.error(f"Arquivo não encontrado no servidor: {path}")
+        return pd.DataFrame()
 
 def get_top_bottom_10(df_agrupado, col_valor):
     df_sorted = df_agrupado.sort_values(col_valor, ascending=True)
