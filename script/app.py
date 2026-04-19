@@ -22,7 +22,7 @@ credentials = {
 }
 
 # Hasheia as senhas em memória para a sessão
-stauth.Hasher.hash_passwords(credentials)
+stauth.Hasher.hash_passwords(credentials['usernames'])
 
 authenticator = stauth.Authenticate(
     credentials, 
