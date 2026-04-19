@@ -12,4 +12,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Comando exato para ligar o Streamlit usando a porta dinâmica do Google ($PORT)
-CMD sh -c "streamlit run script/app.py --server.port=$PORT --server.address=0.0.0.0 --server.enableCORS=false"
+CMD ["streamlit", "run", "script/app.py", "--server.port=8080", "--server.address=0.0.0.0", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
