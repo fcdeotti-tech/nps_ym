@@ -76,19 +76,19 @@ def load_excel_data(file_name, sheet_name):
             # engine openpyxl garante que o Linux leia a planilha igual ao Windows
             df = pd.read_excel(path, sheet_name=sheet_name, engine='openpyxl')
             
-            # TRAVA DE SEGURANÇA PARA LINUX E NÚMEROS BRASILEIROS
+            # TRAVA DE SEGURANÇA PARA LINUX E NÚMEROS BRASILEIROS (Incluindo Impacto e Respondentes)
             colunas_matematicas = [
-                'NPS', 'Gap', 'Contribuição', 'Peso', 'N_valido', 'Volume (N)',
+                'NPS', 'Gap', 'Impacto', 'Contribuição', 'Peso', 'N_valido', 'Respondentes', 'Volume (N)',
                 'NPS Atual', 'NPS Potencial', 'Ganho Possível',
                 '% Detrator -', '% Detrator +', '% Neutro -', '% Neutro +', '% Promotor', '% no Segmento'
             ]
             for col in colunas_matematicas:
                 if col in df.columns:
-                    # Se o Linux ler como texto (ex: "-1,5"), remove espaços e troca vírgula por ponto
+                    # Se o Linux ler como texto, remove espaços, troca vírgula por ponto e corrige o sinal de menos (Unicode)
                     if df[col].dtype == 'object':
-                        df[col] = df[col].astype(str).str.strip().str.replace(',', '.', regex=False)
+                        df[col] = df[col].astype(str).str.strip().str.replace(',', '.', regex=False).str.replace('−', '-', regex=False)
                     
-                    # Converte para número forçadamente e substitui falhas/nulos por 0.0
+                    # Converte forçadamente para número
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
                     
             return df
@@ -132,6 +132,7 @@ def exibir_tamanho_amostra(df):
         
     n = 0
     if 'N_valido' in df_calc.columns: n = df_calc['N_valido'].sum()
+    elif 'Respondentes' in df_calc.columns: n = df_calc['Respondentes'].sum()
     elif 'Volume (N)' in df_calc.columns: n = df_calc['Volume (N)'].sum()
     elif 'Volume' in df_calc.columns: n = df_calc['Volume'].sum()
         
@@ -165,13 +166,18 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
     st.download_button("📥 Baixar Excel", convert_df_to_excel(df_display), filename_download, "application/vnd.ms-excel")
 
 # ==========================================
-# 3. SIDEBAR - FILTROS GLOBAIS
+# 3. SIDEBAR - FILTROS GLOBAIS E LOGOUT
 # ==========================================
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Yamaha_Motor_Logo.svg/1024px-Yamaha_Motor_Logo.svg.png", width=120)
+st.sidebar.markdown("<h1>🏍️</h1>", unsafe_allow_html=True)
 
-# Saudação do Usuário e Botão de Logout Nativos
-st.sidebar.markdown(f"**Olá, {st.session_state['nome_usuario']}!**")
-st.sidebar.button("Sair", on_click=fazer_logout)
+# Botão de Logout Nativo
+if st.sidebar.button("Sair (Logout)"):
+    st.session_state["autenticado"] = False
+    try:
+        st.rerun()
+    except AttributeError:
+        st.experimental_rerun()
+        
 st.sidebar.markdown("---")
 
 departamento = st.sidebar.radio("Dep", ["Vendas (VE)", "Pós-Vendas (PV)"], label_visibility="collapsed")
@@ -222,7 +228,7 @@ def aplicar_filtros_globais(df):
                 df = df[mask]
 
     if f_imp:
-        col = 'Gap' if 'Gap' in df.columns else ('Ganho Possível' if 'Ganho Possível' in df.columns else None)
+        col = 'Gap' if 'Gap' in df.columns else ('Impacto' if 'Impacto' in df.columns else ('Ganho Possível' if 'Ganho Possível' in df.columns else None))
         if col:
             val = pd.to_numeric(df[col], errors='coerce')
             if "Positivo" in f_imp and "Negativo" not in f_imp: df = df[val >= 0]
@@ -289,8 +295,14 @@ if tipo_analise == "Contribuição Total":
 
             if not df_s.empty:
                 st.subheader("Matriz de Impacto por Subcausa")
+                # Se o nome já for Impacto nativamente, o rename simplesmente ignora
                 df_gap = df_s[~df_s['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
-                df_gap = df_gap.rename(columns={'Gap': 'Impacto'}).sort_values('Impacto', ascending=True)
+                if 'Gap' in df_gap.columns:
+                    df_gap = df_gap.rename(columns={'Gap': 'Impacto'})
+                
+                # Forçamos a conversão garantida antes do gráfico
+                df_gap['Impacto'] = pd.to_numeric(df_gap['Impacto'], errors='coerce').fillna(0.0)
+                df_gap = df_gap.sort_values('Impacto', ascending=True)
 
                 if not df_gap.empty:
                     fig_gap = px.bar(df_gap, x='Impacto', y='Subcausa da nota de recomendação', orientation='h', 
@@ -314,12 +326,15 @@ if tipo_analise == "Contribuição Total":
             df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
             if not df_chart.empty:
                 st.subheader("Visão Geral de Impacto")
-                df_chart_agg = df_chart.groupby('Região')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
+                coluna_gap = 'Impacto' if 'Impacto' in df_chart.columns else 'Gap'
+                df_chart[coluna_gap] = pd.to_numeric(df_chart[coluna_gap], errors='coerce').fillna(0.0)
+                df_chart_agg = df_chart.groupby('Região')[coluna_gap].sum().reset_index().rename(columns={coluna_gap: 'Impacto'})
+                
                 fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Região', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
-            mostrar_tabela_formatada(df.sort_values(['Região', 'Gap'], ascending=[True, False]), "Regioes.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Região', coluna_gap], ascending=[True, False]), "Regioes.xlsx")
 
     with t3:
         df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Grup_C_Sub" if dep_prefix=="VE" else f"PV_Tot_Grup_C_Sub"))
@@ -335,12 +350,15 @@ if tipo_analise == "Contribuição Total":
             df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
             if not df_chart.empty:
                 st.subheader("Top 10 / Bottom 10 Impactos por Grupo")
-                df_chart_agg = df_chart.groupby('Grupo')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
+                coluna_gap = 'Impacto' if 'Impacto' in df_chart.columns else 'Gap'
+                df_chart[coluna_gap] = pd.to_numeric(df_chart[coluna_gap], errors='coerce').fillna(0.0)
+                df_chart_agg = df_chart.groupby('Grupo')[coluna_gap].sum().reset_index().rename(columns={coluna_gap: 'Impacto'})
+                
                 fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Grupo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
-            mostrar_tabela_formatada(df.sort_values(['Grupo', 'Gap'], ascending=[True, False]), "Grupos.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Grupo', coluna_gap], ascending=[True, False]), "Grupos.xlsx")
 
     with t4:
         df = aplicar_filtros_globais(load_excel_data(file, f"{dep_prefix}_Conc_C_Sub" if dep_prefix=="VE" else f"PV_Tot_Conc_C_Sub"))
@@ -358,12 +376,15 @@ if tipo_analise == "Contribuição Total":
             df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
             if not df_chart.empty:
                 st.subheader("Top 10 / Bottom 10 Impactos por Concessionária")
-                df_chart_agg = df_chart.groupby('Concessionária')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
+                coluna_gap = 'Impacto' if 'Impacto' in df_chart.columns else 'Gap'
+                df_chart[coluna_gap] = pd.to_numeric(df_chart[coluna_gap], errors='coerce').fillna(0.0)
+                df_chart_agg = df_chart.groupby('Concessionária')[coluna_gap].sum().reset_index().rename(columns={coluna_gap: 'Impacto'})
+                
                 fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Concessionária', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
                 fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
-            mostrar_tabela_formatada(df.sort_values(['Concessionária', 'Gap'], ascending=[True, False]), "Concessionarias.xlsx")
+            mostrar_tabela_formatada(df.sort_values(['Concessionária', coluna_gap], ascending=[True, False]), "Concessionarias.xlsx")
 
     with t5:
         if dep_prefix == "VE":
@@ -377,12 +398,15 @@ if tipo_analise == "Contribuição Total":
                 df_chart = df[~df['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
                 if not df_chart.empty:
                     st.subheader("Top 10 / Bottom 10 Impactos por Modelo")
-                    df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index().rename(columns={'Gap': 'Impacto'})
+                    coluna_gap = 'Impacto' if 'Impacto' in df_chart.columns else 'Gap'
+                    df_chart[coluna_gap] = pd.to_numeric(df_chart[coluna_gap], errors='coerce').fillna(0.0)
+                    df_chart_agg = df_chart.groupby('Modelo')[coluna_gap].sum().reset_index().rename(columns={coluna_gap: 'Impacto'})
+                    
                     fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
                     fig.update_layout(yaxis={'categoryorder':'total ascending'})
                     st.plotly_chart(fig, use_container_width=True)
                     
-                mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap'], ascending=[True, False]), "Modelos.xlsx")
+                mostrar_tabela_formatada(df.sort_values(['Modelo', coluna_gap], ascending=[True, False]), "Modelos.xlsx")
         else:
             st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
 
