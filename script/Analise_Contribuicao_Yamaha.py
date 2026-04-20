@@ -50,11 +50,30 @@ df_pv = pd.read_excel(arquivo_pv, sheet_name='PV', skiprows=8).dropna(how='all')
 col_nps = 'Nota Recomendação concessionária (RESULTADO OFICIAL)'
 
 with pd.ExcelWriter(arquivo_saida, engine='openpyxl') as writer:
+    
+    # ==========================================
+    # NOVO: GERAÇÃO DAS BASES MASTER PARA O DASHBOARD
+    # ==========================================
+    # Definimos as dimensões alvo para o dashboard
+    dimensoes_alvo = ['Região', 'Grupo', 'Concessionária', 'Modelo']
+    
+    # Filtramos apenas as colunas que existem no DataFrame para evitar erros (KeyError)
+    cols_master_ve = [c for c in dimensoes_alvo if c in df_ve.columns]
+    gerar_analise_contribuicao(df_ve, col_nps, cols_master_ve).to_excel(writer, sheet_name='VE_Master', index=False)
+    
+    cols_master_pv = [c for c in dimensoes_alvo if c in df_pv.columns]
+    gerar_analise_contribuicao(df_pv, col_nps, cols_master_pv).to_excel(writer, sheet_name='PV_Master', index=False)
+    # ==========================================
+
     # Vendas - Níveis
-    gerar_analise_contribuicao(df_ve, col_nps, ['Região']).to_excel(writer, sheet_name='VE_Reg_C_Sub', index=False)
-    gerar_analise_contribuicao(df_ve, col_nps, ['Região', 'Grupo']).to_excel(writer, sheet_name='VE_Grup_C_Sub', index=False)
-    gerar_analise_contribuicao(df_ve, col_nps, ['Região', 'Grupo', 'Concessionária']).to_excel(writer, sheet_name='VE_Conc_C_Sub', index=False)
-    gerar_analise_contribuicao(df_ve, col_nps, ['Modelo']).to_excel(writer, sheet_name='VE_Mod_C_Sub', index=False)
+    if 'Região' in df_ve.columns:
+        gerar_analise_contribuicao(df_ve, col_nps, ['Região']).to_excel(writer, sheet_name='VE_Reg_C_Sub', index=False)
+    if all(c in df_ve.columns for c in ['Região', 'Grupo']):
+        gerar_analise_contribuicao(df_ve, col_nps, ['Região', 'Grupo']).to_excel(writer, sheet_name='VE_Grup_C_Sub', index=False)
+    if all(c in df_ve.columns for c in ['Região', 'Grupo', 'Concessionária']):
+        gerar_analise_contribuicao(df_ve, col_nps, ['Região', 'Grupo', 'Concessionária']).to_excel(writer, sheet_name='VE_Conc_C_Sub', index=False)
+    if 'Modelo' in df_ve.columns:
+        gerar_analise_contribuicao(df_ve, col_nps, ['Modelo']).to_excel(writer, sheet_name='VE_Mod_C_Sub', index=False)
     
     # Totais Nacionais
     df_ve_total = gerar_analise_contribuicao(df_ve, col_nps, [])
@@ -62,9 +81,12 @@ with pd.ExcelWriter(arquivo_saida, engine='openpyxl') as writer:
     df_ve_total.groupby('Causa da nota de recomendação').agg({'N_valido':'sum', 'NPS':'mean', 'Contribuição':'sum', 'Gap':'sum'}).reset_index().to_excel(writer, sheet_name='VE_Tot_Causa', index=False)
 
     # Pós-Vendas - Total (Soma de Revisão e Venda de Peças)
-    gerar_analise_contribuicao(df_pv, col_nps, ['Região']).to_excel(writer, sheet_name='PV_Tot_Reg_C_Sub', index=False)
-    gerar_analise_contribuicao(df_pv, col_nps, ['Região', 'Grupo']).to_excel(writer, sheet_name='PV_Tot_Grup_C_Sub', index=False)
-    gerar_analise_contribuicao(df_pv, col_nps, ['Região', 'Grupo', 'Concessionária']).to_excel(writer, sheet_name='PV_Tot_Conc_C_Sub', index=False)
+    if 'Região' in df_pv.columns:
+        gerar_analise_contribuicao(df_pv, col_nps, ['Região']).to_excel(writer, sheet_name='PV_Tot_Reg_C_Sub', index=False)
+    if all(c in df_pv.columns for c in ['Região', 'Grupo']):
+        gerar_analise_contribuicao(df_pv, col_nps, ['Região', 'Grupo']).to_excel(writer, sheet_name='PV_Tot_Grup_C_Sub', index=False)
+    if all(c in df_pv.columns for c in ['Região', 'Grupo', 'Concessionária']):
+        gerar_analise_contribuicao(df_pv, col_nps, ['Região', 'Grupo', 'Concessionária']).to_excel(writer, sheet_name='PV_Tot_Conc_C_Sub', index=False)
     
     df_pv_total = gerar_analise_contribuicao(df_pv, col_nps, [])
     df_pv_total.to_excel(writer, sheet_name='PV_Tot_C_Sub', index=False)
