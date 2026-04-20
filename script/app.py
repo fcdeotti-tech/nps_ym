@@ -28,35 +28,59 @@ st.markdown("""
 # ==========================================
 # FUNÇÃO DE CORREÇÃO DO GRÁFICO DE IMPACTO
 # ==========================================
+# ==========================================
+# FUNÇÃO DE CORREÇÃO DO GRÁFICO DE IMPACTO
+# ==========================================
 def gerar_grafico_impacto_corrigido(df_plot, col_y):
     """
-    Força o eixo X a exibir valores negativos no Cloud e restaura 
-    a escala de cores baseada em intensidade (RdYlGn).
+    Usa graph_objects para controle absoluto.
+    Força eixo simétrico, escala RdYlGn nativa e impede corte de texto negativo.
     """
     df_plot = df_plot.copy()
+    
+    # 1. Garantir conversão numérica forte e ordenação
     df_plot['Impacto'] = pd.to_numeric(df_plot['Impacto'], errors='coerce').fillna(0.0)
+    df_plot = df_plot.sort_values('Impacto', ascending=True)
     
-    # O SEGREDO PARA O GCP: Forçar o range simétrico do eixo X
-    max_val = df_plot['Impacto'].abs().max() * 1.2
-    if pd.isna(max_val) or max_val == 0: max_val = 1
+    # 2. Definir o limite simétrico do eixo X (baseado no maior valor absoluto)
+    max_abs = df_plot['Impacto'].abs().max()
+    max_val = (max_abs * 1.3) if pd.notna(max_abs) and max_abs > 0 else 1.0
+
+    # 3. Construção via Graph Objects (Extremamente robusto no GCP)
+    fig = go.Figure()
     
-    # Restaura a escala de intensidade de cor (Vermelho/Amarelo/Verde)
-    fig = px.bar(
-        df_plot, 
-        x='Impacto', 
-        y=col_y, 
-        orientation='h', 
-        color='Impacto', 
-        color_continuous_scale='RdYlGn', 
-        color_continuous_midpoint=0,  # Garante que 0 é a transição
-        text_auto='.1f'
-    )
+    fig.add_trace(go.Bar(
+        x=df_plot['Impacto'],
+        y=df_plot[col_y],
+        orientation='h',
+        text=[f"{v:.1f}" for v in df_plot['Impacto']], # Formata o texto manualmente
+        textposition='outside',
+        cliponaxis=False,
+        marker=dict(
+            color=df_plot['Impacto'],
+            colorscale='RdYlGn',
+            cmid=0, # Garante que o zero é a transição de cor
+            line=dict(width=0)
+        )
+    ))
     
     fig.update_layout(
-        yaxis={'categoryorder':'total ascending'},
-        xaxis=dict(range=[-max_val, max_val], zeroline=True, zerolinewidth=1, zerolinecolor='gray'),
-        plot_bgcolor='rgba(0,0,0,0)'
+        yaxis=dict(
+            categoryorder='array', 
+            categoryarray=df_plot[col_y].tolist() # Mantém a ordem certa das barras
+        ),
+        xaxis=dict(
+            range=[-max_val, max_val], # Força a linha do zero a ficar no meio
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor='rgba(0,0,0,0.5)',
+            showgrid=False # Design limpo sem linhas de fundo
+        ),
+        plot_bgcolor='rgba(0,0,0,0)',
+        # O SEGREDO AQUI: 'l=50' (Margem esquerda) impede que os negativos sumam da tela!
+        margin=dict(r=50, l=50, t=30, b=30) 
     )
+    
     return fig
 
 # ==========================================
