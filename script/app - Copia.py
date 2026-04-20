@@ -6,58 +6,8 @@ import os
 import io
 import re
 
-# ==========================================
-# IDENTIDADE VISUAL INSIGHTS&ETC (CSS)
-# ==========================================
+# Configuração da Página
 st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
-
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
-    
-    html, body, [class*="css"] { font-family: 'Montserrat', sans-serif; }
-    
-    /* Removemos a cor fixa daqui para respeitar o Dark Mode nativo do usuário */
-    h1, h2, h3 { font-family: 'Montserrat', sans-serif !important; font-weight: 700 !important; }
-    
-    section[data-testid="stSidebar"] { background-color: #0A192F; color: white; }
-    section[data-testid="stSidebar"] .stMarkdown p { color: white; }
-    </style>
-""", unsafe_allow_html=True)
-
-# ==========================================
-# FUNÇÃO DE CORREÇÃO DO GRÁFICO DE IMPACTO
-# ==========================================
-def gerar_grafico_impacto_corrigido(df_plot, col_y):
-    """
-    Força o eixo X a exibir valores negativos no Cloud e restaura 
-    a escala de cores baseada em intensidade (RdYlGn).
-    """
-    df_plot = df_plot.copy()
-    df_plot['Impacto'] = pd.to_numeric(df_plot['Impacto'], errors='coerce').fillna(0.0)
-    
-    # O SEGREDO PARA O GCP: Forçar o range simétrico do eixo X
-    max_val = df_plot['Impacto'].abs().max() * 1.2
-    if pd.isna(max_val) or max_val == 0: max_val = 1
-    
-    # Restaura a escala de intensidade de cor (Vermelho/Amarelo/Verde)
-    fig = px.bar(
-        df_plot, 
-        x='Impacto', 
-        y=col_y, 
-        orientation='h', 
-        color='Impacto', 
-        color_continuous_scale='RdYlGn', 
-        color_continuous_midpoint=0,  # Garante que 0 é a transição
-        text_auto='.1f'
-    )
-    
-    fig.update_layout(
-        yaxis={'categoryorder':'total ascending'},
-        xaxis=dict(range=[-max_val, max_val], zeroline=True, zerolinewidth=1, zerolinecolor='gray'),
-        plot_bgcolor='rgba(0,0,0,0)'
-    )
-    return fig
 
 # ==========================================
 # 1. SISTEMA DE LOGIN NATIVO
@@ -114,7 +64,9 @@ def extrair_numero(val):
     if pd.isna(val): return 0.0
     if isinstance(val, (int, float)): return float(val)
     
+    # Converte para texto, arruma vírgulas e traços estranhos do Linux/Excel
     val_str = str(val).replace(',', '.').replace('−', '-')
+    # Arranca tudo que não for dígito, ponto ou sinal de menos (limpa espaços ocultos)
     val_str = re.sub(r'[^\d\.\-]', '', val_str)
     
     try:
@@ -123,24 +75,26 @@ def extrair_numero(val):
         return 0.0
 
 # ==========================================
-# 3. MAPEAMENTO E LEITURA 
+# 3. MAPEAMENTO E LEITURA (SEM CACHE ANTIGO)
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(os.path.dirname(BASE_DIR), 'output')
 
+# NOME NOVO = CACHE NOVO = DADOS LIMPOS
 @st.cache_data
 def ler_dados_nps_oficial(file_name, sheet_name):
     path = os.path.join(OUTPUT_DIR, file_name)
     if os.path.exists(path):
         try:
             df = pd.read_excel(path, sheet_name=sheet_name, engine='openpyxl')
-            df.columns = df.columns.str.strip() 
+            df.columns = df.columns.str.strip() # Limpa cabeçalhos
             
             colunas_alvo = [
                 'NPS', 'Gap', 'Impacto', 'Contribuição', 'Peso', 'N_valido', 'Respondentes', 
                 'Volume (N)', 'Volume', 'NPS Atual', 'NPS Potencial', 'Ganho Possível'
             ]
             
+            # Passa a Britadeira em todas as colunas matemáticas
             for col in colunas_alvo:
                 if col in df.columns:
                     df[col] = df[col].apply(extrair_numero)
@@ -191,6 +145,7 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
 
     df_display = df.copy()
     
+    # Limpa colunas falsas de Impacto antes de renomear
     if 'Gap' in df_display.columns and 'Impacto' in df_display.columns:
         df_display = df_display.drop(columns=['Impacto'])
         
@@ -324,8 +279,8 @@ if tipo_analise == "Contribuição Total":
                 for cat, val in zip(x_vals, y_vals):
                     if cat == "NPS Total": colors.append("#1f77b4")
                     elif cat in ["Não indicou motivo específico", "Outro(s) motivo(s)"]: colors.append("#808080")
-                    elif val >= 0: colors.append("#00D2D3") # CorInsights Positivo
-                    else: colors.append("#FF6B6B") # CorInsights Negativo
+                    elif val >= 0: colors.append("#2ca02c")
+                    else: colors.append("#d62728")
 
                 texts = [f"{v:.1f}" for v in y_vals]
                 fig_wf = go.Figure()
@@ -344,8 +299,13 @@ if tipo_analise == "Contribuição Total":
                     if 'Impacto' in df_gap.columns: df_gap = df_gap.drop(columns=['Impacto'])
                     df_gap = df_gap.rename(columns={'Gap': 'Impacto'})
                     
+                    # MARTELADA FINAL: Garante float no segundo exato antes do Plotly
+                    df_gap['Impacto'] = pd.to_numeric(df_gap['Impacto'], errors='coerce').fillna(0.0)
+                    df_gap = df_gap.sort_values('Impacto', ascending=True)
+
                     if not df_gap.empty:
-                        fig_gap = gerar_grafico_impacto_corrigido(df_gap, 'Subcausa da nota de recomendação')
+                        fig_gap = px.bar(df_gap, x='Impacto', y='Subcausa da nota de recomendação', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
+                        fig_gap.update_layout(yaxis={'categoryorder':'total ascending'}) 
                         st.plotly_chart(fig_gap, use_container_width=True)
 
             st.subheader("Impacto Consolidado por Causa")
@@ -367,7 +327,8 @@ if tipo_analise == "Contribuição Total":
                 df_chart_agg = df_chart.groupby('Região')['Gap'].sum().reset_index()
                 df_chart_agg = df_chart_agg.rename(columns={'Gap': 'Impacto'})
                 
-                fig = gerar_grafico_impacto_corrigido(get_top_bottom_10(df_chart_agg, 'Impacto'), 'Região')
+                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Região', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
+                fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
             mostrar_tabela_formatada(df.sort_values(['Região', 'Gap' if 'Gap' in df.columns else 'Região'], ascending=[True, False]), "Regioes.xlsx")
@@ -389,7 +350,8 @@ if tipo_analise == "Contribuição Total":
                 df_chart_agg = df_chart.groupby('Grupo')['Gap'].sum().reset_index()
                 df_chart_agg = df_chart_agg.rename(columns={'Gap': 'Impacto'})
                 
-                fig = gerar_grafico_impacto_corrigido(get_top_bottom_10(df_chart_agg, 'Impacto'), 'Grupo')
+                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Grupo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
+                fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
             mostrar_tabela_formatada(df.sort_values(['Grupo', 'Gap' if 'Gap' in df.columns else 'Grupo'], ascending=[True, False]), "Grupos.xlsx")
@@ -413,7 +375,8 @@ if tipo_analise == "Contribuição Total":
                 df_chart_agg = df_chart.groupby('Concessionária')['Gap'].sum().reset_index()
                 df_chart_agg = df_chart_agg.rename(columns={'Gap': 'Impacto'})
                 
-                fig = gerar_grafico_impacto_corrigido(get_top_bottom_10(df_chart_agg, 'Impacto'), 'Concessionária')
+                fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Concessionária', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
+                fig.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig, use_container_width=True)
                 
             mostrar_tabela_formatada(df.sort_values(['Concessionária', 'Gap' if 'Gap' in df.columns else 'Concessionária'], ascending=[True, False]), "Concessionarias.xlsx")
@@ -433,7 +396,8 @@ if tipo_analise == "Contribuição Total":
                     df_chart_agg = df_chart.groupby('Modelo')['Gap'].sum().reset_index()
                     df_chart_agg = df_chart_agg.rename(columns={'Gap': 'Impacto'})
                     
-                    fig = gerar_grafico_impacto_corrigido(get_top_bottom_10(df_chart_agg, 'Impacto'), 'Modelo')
+                    fig = px.bar(get_top_bottom_10(df_chart_agg, 'Impacto'), x='Impacto', y='Modelo', orientation='h', color='Impacto', color_continuous_scale='RdYlGn', text_auto='.1f')
+                    fig.update_layout(yaxis={'categoryorder':'total ascending'})
                     st.plotly_chart(fig, use_container_width=True)
                     
                 mostrar_tabela_formatada(df.sort_values(['Modelo', 'Gap' if 'Gap' in df.columns else 'Modelo'], ascending=[True, False]), "Modelos.xlsx")
@@ -541,15 +505,7 @@ elif tipo_analise == "Ciclo de Revisões":
                 st.info("Não há dados de Revisões para os filtros selecionados.")
 
 # ==========================================
-# 6. FOOTER / INFO DA MARCA
+# 6. FOOTER / INFO
 # ==========================================
 st.sidebar.markdown("---")
-st.sidebar.markdown(
-    f'<div style="text-align: center; font-family: Montserrat;">'
-    f'<span style="color:white; font-weight:700; font-size:18px;">INSIGHTS</span>'
-    f'<span style="color:#FF6B6B; font-weight:900; font-size:20px;">&</span>'
-    f'<span style="color:#9CA3AF; font-weight:400; font-size:16px;">Etc</span>'
-    f'</div>', 
-    unsafe_allow_html=True
-)
-st.sidebar.caption("<div style='text-align: center;'>Dashboard Seguro: Yamaha Motors</div>", unsafe_allow_html=True)
+st.sidebar.caption("Dashboard Seguro: Yamaha Motors")

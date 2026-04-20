@@ -1,6 +1,6 @@
 streamlit==1.32.2
-pandas
+pandas>=2.1.0
 numpy
-plotly
+plotly>=5.18.0
 openpyxl
 streamlit-authenticator==0.3.2
