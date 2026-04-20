@@ -28,59 +28,62 @@ st.markdown("""
 # ==========================================
 # FUNÇÃO DE CORREÇÃO DO GRÁFICO DE IMPACTO
 # ==========================================
-# ==========================================
-# FUNÇÃO DE CORREÇÃO DO GRÁFICO DE IMPACTO
-# ==========================================
 def gerar_grafico_impacto_corrigido(df_plot, col_y):
     """
-    Usa graph_objects para controle absoluto.
-    Força eixo simétrico, escala RdYlGn nativa e impede corte de texto negativo.
+    Retorna ao px.bar (seguro para nomes de categorias).
+    Ajusta eixo X simétrico, formatação dinâmica e possui trava contra crash.
     """
     df_plot = df_plot.copy()
     
-    # 1. Garantir conversão numérica forte e ordenação
-    df_plot['Impacto'] = pd.to_numeric(df_plot['Impacto'], errors='coerce').fillna(0.0)
+    # TRAVA DE SEGURANÇA: Evita o erro "figure_or_data must be dict-like"
+    if df_plot.empty:
+        fig_vazia = go.Figure()
+        fig_vazia.update_layout(title="Sem dados para exibir", plot_bgcolor='rgba(0,0,0,0)')
+        return fig_vazia
+    
+    # 1. Garante a conversão e ordenação corretas
+    df_plot['Impacto'] = df_plot['Impacto'].apply(extrair_numero)
     df_plot = df_plot.sort_values('Impacto', ascending=True)
     
-    # 2. Definir o limite simétrico do eixo X (baseado no maior valor absoluto)
+    # 2. Trava do Eixo X (Garante que os negativos apareçam à esquerda)
     max_abs = df_plot['Impacto'].abs().max()
-    max_val = (max_abs * 1.3) if pd.notna(max_abs) and max_abs > 0 else 1.0
-
-    # 3. Construção via Graph Objects (Extremamente robusto no GCP)
-    fig = go.Figure()
+    max_range = (max_abs * 1.3) if pd.notna(max_abs) and max_abs > 0 else 1.0
     
-    fig.add_trace(go.Bar(
-        x=df_plot['Impacto'],
-        y=df_plot[col_y],
-        orientation='h',
-        text=[f"{v:.1f}" for v in df_plot['Impacto']], # Formata o texto manualmente
-        textposition='outside',
-        cliponaxis=False,
-        marker=dict(
-            color=df_plot['Impacto'],
-            colorscale='RdYlGn',
-            cmid=0, # Garante que o zero é a transição de cor
-            line=dict(width=0)
-        )
-    ))
+    # 3. Inteligência de Casas Decimais (evita que Gaps ínfimos mascarem como 0.0)
+    fmt = ".2f" if max_abs > 0 and max_abs < 0.5 else ".1f"
     
-    fig.update_layout(
-        yaxis=dict(
-            categoryorder='array', 
-            categoryarray=df_plot[col_y].tolist() # Mantém a ordem certa das barras
-        ),
-        xaxis=dict(
-            range=[-max_val, max_val], # Força a linha do zero a ficar no meio
-            zeroline=True,
-            zerolinewidth=2,
-            zerolinecolor='rgba(0,0,0,0.5)',
-            showgrid=False # Design limpo sem linhas de fundo
-        ),
-        plot_bgcolor='rgba(0,0,0,0)',
-        # O SEGREDO AQUI: 'l=50' (Margem esquerda) impede que os negativos sumam da tela!
-        margin=dict(r=50, l=50, t=30, b=30) 
+    # 4. Construção via Plotly Express
+    fig = px.bar(
+        df_plot, 
+        x='Impacto', 
+        y=col_y, 
+        orientation='h', 
+        color='Impacto', 
+        color_continuous_scale='RdYlGn', 
+        color_continuous_midpoint=0,
+        text_auto=fmt
     )
     
+    # 5. O segredo visual: texto para fora, sem cortar, com fundo limpo
+    fig.update_traces(
+        textposition='outside', 
+        cliponaxis=False
+    )
+    
+    fig.update_layout(
+        yaxis={'categoryorder':'total ascending'},
+        xaxis=dict(
+            range=[-max_range, max_range], 
+            zeroline=True, 
+            zerolinewidth=2, 
+            zerolinecolor='rgba(0,0,0,0.4)', # Linha do zero visível
+            showgrid=False # Design limpo
+        ),
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(r=50, l=10) # Margem extra à direita para o texto
+    )
+    
+    # IMPORTANTE: Garanta que esta linha está alinhada à esquerda com o fig.update_layout
     return fig
 
 # ==========================================
@@ -132,19 +135,30 @@ if not st.session_state["autenticado"]:
     st.stop()
 
 # ==========================================
-# 2. EXTRATOR NUMÉRICO (A Britadeira)
+# 2. EXTRATOR NUMÉRICO (A Britadeira Blindada)
 # ==========================================
 def extrair_numero(val):
     if pd.isna(val): return 0.0
     if isinstance(val, (int, float)): return float(val)
     
-    val_str = str(val).replace(',', '.').replace('−', '-')
+    # Limpa espaços ocultos que o Excel/Linux geram
+    val_str = str(val).strip().replace('\xa0', '')
+    
+    # Salva os negativos em formato contábil: (0.05) vira -0.05
+    if val_str.startswith('(') and val_str.endswith(')'):
+        val_str = '-' + val_str[1:-1]
+        
+    # Padroniza vírgulas e todos os tipos de travessões/hífens
+    val_str = val_str.replace(',', '.').replace('−', '-').replace('–', '-').replace('—', '-')
     val_str = re.sub(r'[^\d\.\-]', '', val_str)
     
     try:
-        return float(val_str) if val_str and val_str != '-' else 0.0
+        if val_str == '-' or not val_str:
+            return 0.0
+        return float(val_str)
     except ValueError:
         return 0.0
+
 
 # ==========================================
 # 3. MAPEAMENTO E LEITURA 
