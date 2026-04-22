@@ -25,6 +25,13 @@ COR_AZUL = "#0A192F"
 COR_TURQUESA = "#00D2D3"
 COR_LARANJA = "#FF6B6B"
 
+CORES_SEGMENTOS = {
+    'Detratores': '#E63946',  
+    'Neutros-': '#F4A261',    
+    'Neutros+': '#E9C46A',    
+    'Promotores': '#2A9D8F'   
+}
+
 # ==========================================
 # FUNÇÕES DE GRÁFICOS (BLINDADOS GCP - LISTAS NATIVAS)
 # ==========================================
@@ -61,13 +68,12 @@ def gerar_grafico_impacto_corrigido(df_plot, col_y, altura=350):
 
 def gerar_matriz_dispersao(df, col_dimensao, altura=350):
     if df.empty or 'Gap' not in df.columns or 'NPS' not in df.columns: 
-        return go.Figure()
+        return go.Figure().update_layout(title="Sem dados para a Matriz", plot_bgcolor='rgba(0,0,0,0)')
     
     df_plot = df.copy()
     df_plot['Gap'] = pd.to_numeric(df_plot['Gap'], errors='coerce').fillna(0.0)
     df_plot['NPS'] = pd.to_numeric(df_plot['NPS'], errors='coerce').fillna(0.0)
 
-    # Conversão para listas nativas (Evita bug do Cloud Run)
     valores_x = df_plot['Gap'].tolist()
     valores_y = df_plot['NPS'].tolist()
     textos = df_plot[col_dimensao].astype(str).tolist()
@@ -75,7 +81,7 @@ def gerar_matriz_dispersao(df, col_dimensao, altura=350):
 
     fig = go.Figure(go.Scatter(
         x=valores_x, y=valores_y, mode='markers+text',
-        text=textos, textposition='top center',
+        text=textos, textposition='top center', cliponaxis=False,
         marker=dict(size=12, color=cores, line=dict(width=1, color='DarkSlateGrey'))
     ))
 
@@ -115,6 +121,52 @@ def gerar_grafico_colunas_comparativo(df, col_dimensao, causa):
         yaxis=dict(range=[-max_range, max_range], zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=True, gridcolor='#E5E7EB'),
         xaxis=dict(tickangle=-45), 
         height=400, margin=dict(t=50, b=100)
+    )
+    return fig
+
+def gerar_grafico_distribuicao_segmentos(df, col_dimensao):
+    if df.empty: return go.Figure()
+    df_plot = df.copy()
+    
+    vol_col = next((c for c in ['N_valido', 'Respondentes', 'Volume', 'Volume (N)'] if c in df_plot.columns), None)
+    if vol_col:
+        df_plot = df_plot.sort_values(vol_col, ascending=True)
+    
+    col_mapping = {}
+    for col in df_plot.columns:
+        c_norm = col.upper().replace(" ", "").replace('−', '-').replace('–', '-').replace('—', '-')
+        if 'DETRATOR' in c_norm: col_mapping['Detratores'] = col
+        elif 'NEUTRO-' in c_norm: col_mapping['Neutros-'] = col
+        elif 'NEUTRO+' in c_norm: col_mapping['Neutros+'] = col
+        elif 'PROMOTOR' in c_norm: col_mapping['Promotores'] = col
+
+    fig = go.Figure()
+    ordem_desejada = ['Detratores', 'Neutros-', 'Neutros+', 'Promotores']
+    
+    for label in ordem_desejada:
+        if label in col_mapping:
+            col_excel = col_mapping[label]
+            x_vals = pd.to_numeric(df_plot[col_excel], errors='coerce').fillna(0).tolist()
+            y_vals = df_plot[col_dimensao].astype(str).tolist()
+            
+            fig.add_trace(go.Bar(
+                name=label,
+                y=y_vals,
+                x=x_vals,
+                orientation='h',
+                marker_color=CORES_SEGMENTOS[label],
+                text=[f"{v:.0f}%" if v >= 5 else "" for v in x_vals], 
+                textposition='inside'
+            ))
+
+    fig.update_layout(
+        barmode='stack',
+        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(title="Distribuição %", range=[0, 100], showgrid=False, zeroline=False),
+        yaxis=dict(tickfont=dict(size=11)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=10, r=40, t=50, b=20),
+        height=max(350, len(df_plot) * 35)
     )
     return fig
 
@@ -165,7 +217,7 @@ if not st.session_state["autenticado"]:
     st.stop()
 
 # ==========================================
-# 2. DADOS E BRITADEIRA (COM BUSCA INTELIGENTE DE ARQUIVOS)
+# 2. DADOS E BRITADEIRA 
 # ==========================================
 def extrair_numero(val):
     if pd.isna(val): return 0.0
@@ -180,25 +232,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(os.path.dirname(BASE_DIR), 'output')
 
 @st.cache_data
-def ler_dados_nps_oficial(prefixo_arquivo, sheet_name):
-    """ Busca o arquivo mais recente que comece com o prefixo informado (Resolve o problema do timestamp) """
-    if not os.path.exists(OUTPUT_DIR): return pd.DataFrame()
-    
-    # Encontra todos os arquivos que começam com o prefixo
-    arquivos_validos = [f for f in os.listdir(OUTPUT_DIR) if f.startswith(prefixo_arquivo) and f.endswith(('.xlsx', '.xls'))]
-    if not arquivos_validos: return pd.DataFrame()
-    
-    # Pega o arquivo mais recente (útil se tiver vários Analise_Neutros_Data1, Data2, etc)
-    arquivos_validos.sort(key=lambda x: os.path.getmtime(os.path.join(OUTPUT_DIR, x)), reverse=True)
-    caminho_arquivo = os.path.join(OUTPUT_DIR, arquivos_validos[0])
-    
-    try:
-        df = pd.read_excel(caminho_arquivo, sheet_name=sheet_name, engine='openpyxl')
-        df.columns = df.columns.str.strip() 
-        for col in ['NPS', 'Gap', 'Impacto', 'Contribuição', 'Peso', 'N_valido', 'Respondentes', 'Volume', 'Ganho Possível']:
-            if col in df.columns: df[col] = df[col].apply(extrair_numero)
-        return df
-    except: return pd.DataFrame()
+def ler_dados_nps_oficial(file_name, sheet_name):
+    path = os.path.join(OUTPUT_DIR, file_name)
+    if os.path.exists(path):
+        try:
+            df = pd.read_excel(path, sheet_name=sheet_name, engine='openpyxl')
+            df.columns = df.columns.str.strip() 
+            for col in df.columns:
+                if col == 'Segmento_NPS': continue
+                if any(term in col for term in ['NPS', 'Gap', 'Impacto', 'Contribuição', 'N_valido', 'Respondentes', 'Volume', '%', 'Ganho Possível']):
+                    df[col] = df[col].apply(extrair_numero)
+            return df
+        except: return pd.DataFrame()
+    return pd.DataFrame()
 
 def convert_df_to_excel(df):
     output = io.BytesIO()
@@ -215,9 +261,13 @@ def exibir_tamanho_amostra(df):
             break
     st.markdown(f"<div style='text-align: right; font-size: 13px; color: #888; margin-bottom: 5px;'>Tamanho da Amostra (N): <b>{int(n):,}</b></div>".replace(',', '.'), unsafe_allow_html=True)
 
-def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
+def mostrar_tabela_formatada(df, filename_download="dados.xlsx", hide_cols=None):
     if df.empty: return st.info("Sem dados.")
     df_disp = df.copy()
+    
+    if hide_cols: 
+        df_disp = df_disp.drop(columns=hide_cols, errors='ignore')
+        
     if 'Gap' in df_disp.columns and 'Impacto' in df_disp.columns: df_disp = df_disp.drop(columns=['Impacto'])
     df_disp = df_disp.rename(columns={'N_valido': 'Respondentes', 'Gap': 'Impacto'})
     
@@ -234,7 +284,8 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx"):
         cols.insert(cols.index('Respondentes') + 1, '% Respondentes')
         df_disp = df_disp[cols]
 
-    fmt = {c: lambda x: f"{x:.1f}" if pd.notna(x) else "-" for c in ['NPS', 'Impacto', 'Contribuição', '% Respondentes', 'NPS Atual', 'NPS Potencial', 'Ganho Possível'] if c in df_disp.columns}
+    fmt = {c: lambda x: f"{x:.1f}" if pd.notna(x) else "-" for c in df_disp.columns if any(t in c for t in ['NPS', 'Impacto', 'Contribuição', '% Respondentes', 'NPS Atual', 'NPS Potencial', 'Ganho Possível']) and c != 'Segmento_NPS'}
+    
     if 'Respondentes' in df_disp.columns: fmt['Respondentes'] = lambda x: f"{int(x)}" if pd.notna(x) else "-"
     
     st.dataframe(df_disp.style.format(fmt), use_container_width=True, hide_index=True)
@@ -245,12 +296,30 @@ def aplicar_filtros_globais(df, f_causa, f_sub, f_nps, f_imp):
     if 'Região' in df.columns: df = df[~df['Região'].astype(str).str.upper().str.contains('PERFIL', na=False)]
     if f_causa and 'Causa da nota de recomendação' in df.columns: df = df[df['Causa da nota de recomendação'].isin(f_causa)]
     if f_sub and 'Subcausa da nota de recomendação' in df.columns: df = df[df['Subcausa da nota de recomendação'].isin(f_sub)]
+    if f_nps:
+        col = 'NPS' if 'NPS' in df.columns else ('NPS Atual' if 'NPS Atual' in df.columns else None)
+        if col:
+            val = pd.to_numeric(df[col], errors='coerce')
+            m = []
+            if "Menor que 0" in f_nps: m.append(val < 0)
+            if "0 a 49" in f_nps: m.append((val >= 0) & (val < 50))
+            if "50 a 74" in f_nps: m.append((val >= 50) & (val < 75))
+            if "75 a 100" in f_nps: m.append(val >= 75)
+            if m:
+                mask = m[0]
+                for i in m[1:]: mask |= i
+                df = df[mask]
+    if f_imp:
+        col = 'Gap' if 'Gap' in df.columns else ('Impacto' if 'Impacto' in df.columns else ('Ganho Possível' if 'Ganho Possível' in df.columns else None))
+        if col:
+            val = pd.to_numeric(df[col], errors='coerce')
+            if "Positivo" in f_imp and "Negativo" not in f_imp: df = df[val >= 0]
+            elif "Negativo" in f_imp and "Positivo" not in f_imp: df = df[val < 0]
     return df
 
 # ==========================================
 # 3. SIDEBAR E FILTROS GLOBAIS
 # ==========================================
-# LOGO REDUZIDO (Usa colunas para centralizar e diminuir o tamanho)
 try:
     c_logo1, c_logo2, c_logo3 = st.sidebar.columns([1, 2, 1])
     with c_logo2:
@@ -271,7 +340,7 @@ tipo_analise = st.sidebar.selectbox("Tipo de Análise", ["Contribuição Total",
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Filtros Globais")
-df_filtros = ler_dados_nps_oficial("Analise_NPS_Yamaha", f"{dep_prefix}_Tot_C_Sub")
+df_filtros = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Tot_C_Sub")
 
 def limpar(lista): return sorted([str(x) for x in lista if pd.notna(x) and str(x) not in ['-', 'Total', 'TOTAL DA CAUSA', 'Não especificada']])
 
@@ -291,14 +360,14 @@ termos_omitir_graficos = ['-', 'Não especificada', 'Nenhuma das opções acima'
 if tipo_analise == "Contribuição Total":
     st.title(f"📊 Contribuição e Impactos: {departamento}")
     t1, t2, t3, t4, t5 = st.tabs(["Geral", "Regiões", "Grupos", "Concessionárias", "Modelos"])
-    file_prefix = "Analise_NPS_Yamaha"
+    file = "Analise_NPS_Yamaha.xlsx"
 
     # --- ABA GERAL ---
     with t1:
         st.subheader("Filtros da Visão Geral")
-        df_master = ler_dados_nps_oficial(file_prefix, f"{dep_prefix}_Master")
-        df_c_default = aplicar_filtros_globais(ler_dados_nps_oficial(file_prefix, f"{dep_prefix}_Tot_Causa"), f_causa, f_sub, f_nps, f_imp)
-        df_s_default = aplicar_filtros_globais(ler_dados_nps_oficial(file_prefix, f"{dep_prefix}_Tot_C_Sub"), f_causa, f_sub, f_nps, f_imp)
+        df_master = ler_dados_nps_oficial(file, f"{dep_prefix}_Master")
+        df_c_default = aplicar_filtros_globais(ler_dados_nps_oficial(file, f"{dep_prefix}_Tot_Causa"), f_causa, f_sub, f_nps, f_imp)
+        df_s_default = aplicar_filtros_globais(ler_dados_nps_oficial(file, f"{dep_prefix}_Tot_C_Sub"), f_causa, f_sub, f_nps, f_imp)
 
         col1, col2, col3, col4 = st.columns(4)
         f_reg, f_grp, f_con, f_mod = [], [], [], []
@@ -357,7 +426,7 @@ if tipo_analise == "Contribuição Total":
 
     # --- ABAS COMPARATIVAS ---
     def render_aba_comparativa(sheet_name, col_dimensao):
-        df_raw = ler_dados_nps_oficial(file_prefix, sheet_name)
+        df_raw = ler_dados_nps_oficial(file, sheet_name)
         if df_raw.empty: return st.info(f"Nenhum dado encontrado para a visão de {col_dimensao}.")
         
         mask_totais_base = (df_raw['Causa da nota de recomendação'].isin(['-', 'Total'])) & (df_raw['Subcausa da nota de recomendação'].isin(['-', 'Total']))
@@ -407,76 +476,117 @@ if tipo_analise == "Contribuição Total":
         if dep_prefix == "VE": render_aba_comparativa("VE_Mod_C_Sub", 'Modelo')
         else: st.info("Análise de modelo disponível em 'Ciclo de Revisões'.")
 
-# --- OUTRAS ANÁLISES ---
+# --- ANÁLISE DE NEUTROS / DETRATORES ---
 elif tipo_analise in ["Análise de Neutros", "Análise de Detratores"]:
     foco = "Neutros" if "Neutros" in tipo_analise else "Detratores"
-    file_prefix = f"Analise_{foco}_Yamaha"
+    file = f"Analise_{foco}_Yamaha.xlsx"
     st.title(f"⚖️ Potencial de Reversão: {foco} ({departamento})")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Regiões", "Grupos", "Concessionárias", "Causas Detalhadas", "Modelos"])
     
-    with tab1:
-        df_reg = aplicar_filtros_globais(ler_dados_nps_oficial(file_prefix, f"{dep_prefix}_Potencial_Regiao"), f_causa, f_sub, f_nps, f_imp)
-        if not df_reg.empty:
-            filtro_local = st.multiselect("Filtrar Região", limpar(df_reg['Região'].unique()), key="sel_reg2")
-            if filtro_local: df_reg = df_reg[df_reg['Região'].isin(filtro_local)]
-            exibir_tamanho_amostra(df_reg)
-            st.subheader("Ganho de NPS por Região")
-            if 'Ganho Possível' in df_reg.columns:
-                df_reg['Ganho Possível'] = pd.to_numeric(df_reg['Ganho Possível'], errors='coerce').fillna(0.0)
-                fig = px.bar(df_reg, x='Região', y='Ganho Possível', color='Ganho Possível', text_auto='.1f')
-                st.plotly_chart(fig, use_container_width=True)
-            mostrar_tabela_formatada(df_reg, f"{foco}_Potencial_Regiao.xlsx")
-        else: st.info(f"Nenhum dado encontrado para {foco} por Região.")
+    # Aba "Causas e Subcausas" agora é a ÚLTIMA da lista
+    tabs = st.tabs(["Regiões", "Grupos", "Concessionárias", "Modelos", "Causas e Subcausas"])
+    
+    # === 1. ABAS COMPARATIVAS (Região, Grupo, Conc, Modelo) ===
+    dims_configs = [
+        ('Região', f"{dep_prefix}_Potencial_Regiao"),
+        ('Grupo', f"{dep_prefix}_Potencial_Grupo"),
+        ('Concessionária', f"{dep_prefix}_Potencial_Conc"),
+        ('Modelo', f"VE_Modelos_{foco[:6]}" if dep_prefix == "VE" else "")
+    ]
+    
+    for i, (dim, sheet) in enumerate(dims_configs):
+        with tabs[i]: 
+            if dim == 'Modelo' and dep_prefix == 'PV': 
+                st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
+                continue
+            
+            df_aba = aplicar_filtros_globais(ler_dados_nps_oficial(file, sheet), f_causa, f_sub, f_nps, f_imp)
+            
+            if not df_aba.empty:
+                vol_col = next((c for c in ['N_valido', 'Respondentes', 'Volume', 'Volume (N)'] if c in df_aba.columns), None)
+                if dim in ['Grupo', 'Concessionária', 'Modelo'] and vol_col:
+                    if len(df_aba) > 10:
+                        df_aba = df_aba.sort_values(vol_col, ascending=False).head(10)
+                
+                exibir_tamanho_amostra(df_aba)
+                
+                st.subheader(f"Distribuição de Segmentos NPS por {dim}")
+                st.plotly_chart(gerar_grafico_distribuicao_segmentos(df_aba, dim), use_container_width=True)
+                
+                st.subheader(f"Detalhamento Estatístico por {dim}")
+                mostrar_tabela_formatada(df_aba, f"{foco}_{dim}.xlsx", hide_cols=['Ganho Possível', 'Potencial'])
+            else:
+                st.info(f"Nenhum dado encontrado para {foco} por {dim}.")
 
-    with tab2:
-        df_grup = aplicar_filtros_globais(ler_dados_nps_oficial(file_prefix, f"{dep_prefix}_Potencial_Grupo"), f_causa, f_sub, f_nps, f_imp)
-        if not df_grup.empty:
-            filtro_local = st.multiselect("Filtrar Grupo", limpar(df_grup['Grupo'].unique()), key="sel_grup2")
-            if filtro_local: df_grup = df_grup[df_grup['Grupo'].isin(filtro_local)]
-            exibir_tamanho_amostra(df_grup)
-            st.subheader("Visão por Grupo")
-            mostrar_tabela_formatada(df_grup, f"{foco}_Potencial_Grupo.xlsx")
-        else: st.info(f"Nenhum dado encontrado para {foco} por Grupo.")
+    # === 2. ABA CAUSAS E SUBCAUSAS (Agora no index 4) ===
+    with tabs[4]:
+        st.subheader(f"Visão Geral de Impacto ({foco})")
+        df_causas_nd = ler_dados_nps_oficial(file, f"{dep_prefix}_Causas_{foco[:6]}")
+        
+        if not df_causas_nd.empty:
+            df_causas_nd = aplicar_filtros_globais(df_causas_nd, f_causa, f_sub, f_nps, f_imp)
+            
+            # FILTROS EXCLUSIVOS DA ABA CAUSAS
+            col1, col2, col3, col4 = st.columns(4)
+            f_reg_nd, f_grp_nd, f_con_nd, f_mod_nd = [], [], [], []
+            
+            if 'Região' in df_causas_nd.columns:
+                reg_vals = [r for r in df_causas_nd['Região'].dropna().unique() if 'PERFIL' not in str(r).upper()]
+                f_reg_nd = col1.multiselect("Região", sorted(reg_vals), key=f"reg_nd_{foco}")
+            if 'Grupo' in df_causas_nd.columns: 
+                f_grp_nd = col2.multiselect("Grupo", sorted(df_causas_nd['Grupo'].dropna().unique()), key=f"grp_nd_{foco}")
+            if 'Concessionária' in df_causas_nd.columns: 
+                f_con_nd = col3.multiselect("Concessionária", sorted(df_causas_nd['Concessionária'].dropna().unique()), key=f"con_nd_{foco}")
+            if 'Modelo' in df_causas_nd.columns: 
+                f_mod_nd = col4.multiselect("Modelo", sorted(df_causas_nd['Modelo'].dropna().unique()), key=f"mod_nd_{foco}")
 
-    with tab3:
-        df_conc = aplicar_filtros_globais(ler_dados_nps_oficial(file_prefix, f"{dep_prefix}_Potencial_Conc"), f_causa, f_sub, f_nps, f_imp)
-        if not df_conc.empty:
-            filtro_local = st.multiselect("Filtrar Concessionária", limpar(df_conc['Concessionária'].unique()), key="sel_conc2")
-            if filtro_local: df_conc = df_conc[df_conc['Concessionária'].isin(filtro_local)]
-            exibir_tamanho_amostra(df_conc)
-            st.subheader("Visão por Concessionária")
-            mostrar_tabela_formatada(df_conc, f"{foco}_Potencial_Conc.xlsx")
-        else: st.info(f"Nenhum dado encontrado para {foco} por Concessionária.")
+            # Aplicação dos filtros locais de dimensão
+            if f_reg_nd: df_causas_nd = df_causas_nd[df_causas_nd['Região'].isin(f_reg_nd)]
+            if f_grp_nd: df_causas_nd = df_causas_nd[df_causas_nd['Grupo'].isin(f_grp_nd)]
+            if f_con_nd: df_causas_nd = df_causas_nd[df_causas_nd['Concessionária'].isin(f_con_nd)]
+            if f_mod_nd: df_causas_nd = df_causas_nd[df_causas_nd['Modelo'].isin(f_mod_nd)]
+            
+            # Filtro de Segmento (se aplicável)
+            if 'Segmento_NPS' in df_causas_nd.columns:
+                segmentos = sorted(df_causas_nd['Segmento_NPS'].dropna().unique())
+                segmento = st.selectbox("Filtrar Tipo de Cliente", ["Todos"] + list(segmentos), key=f"seg_nd_{foco}")
+                if segmento != "Todos":
+                    df_causas_nd = df_causas_nd[df_causas_nd['Segmento_NPS'] == segmento]
+            
+            exibir_tamanho_amostra(df_causas_nd)
+            st.markdown("---")
+            
+            # Agregação dinâmica após os filtros
+            if 'Gap' in df_causas_nd.columns:
+                df_causas_nd['Gap'] = pd.to_numeric(df_causas_nd['Gap'], errors='coerce').fillna(0.0)
+                
+                df_c = df_causas_nd.groupby('Causa da nota de recomendação')[['Gap']].sum().reset_index()
+                df_s = df_causas_nd.groupby(['Causa da nota de recomendação', 'Subcausa da nota de recomendação'])[['Gap']].sum().reset_index()
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.subheader("Impacto por Causa")
+                    df_c_plot = df_c[~df_c['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].copy()
+                    df_c_plot = df_c_plot.rename(columns={'Gap': 'Impacto'})
+                    st.plotly_chart(gerar_grafico_impacto_corrigido(df_c_plot, 'Causa da nota de recomendação', altura=400), use_container_width=True)
+                with col_b:
+                    st.subheader("Impacto por Subcausa")
+                    df_s_plot = df_s[~df_s['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
+                    df_s_plot = df_s_plot.rename(columns={'Gap': 'Impacto'})
+                    st.plotly_chart(gerar_grafico_impacto_corrigido(df_s_plot, 'Subcausa da nota de recomendação', altura=400), use_container_width=True)
+            
+            st.subheader("Tabelas de Detalhamento")
+            mostrar_tabela_formatada(df_causas_nd, f"{foco}_Causas.xlsx", hide_cols=['Ganho Possível', 'Potencial'])
+        else:
+            st.info("Nenhum dado de causas detalhadas encontrado para este segmento.")
 
-    with tab4:
-        df_causa_aba = aplicar_filtros_globais(ler_dados_nps_oficial(file_prefix, f"{dep_prefix}_Causas_{foco[:6]}"), f_causa, f_sub, f_nps, f_imp)
-        if not df_causa_aba.empty:
-            segmentos = sorted(df_causa_aba['Segmento_NPS'].dropna().unique())
-            segmento = st.selectbox("Filtrar Tipo de Cliente", segmentos)
-            if segmento: df_causa_aba = df_causa_aba[df_causa_aba['Segmento_NPS'] == segmento]
-            exibir_tamanho_amostra(df_causa_aba)
-            mostrar_tabela_formatada(df_causa_aba, f"{foco}_Causas.xlsx")
-        else: st.info(f"Nenhum dado de causas detalhadas encontrado para {foco}.")
-
-    with tab5:
-        if dep_prefix == "VE":
-            df_mod = aplicar_filtros_globais(ler_dados_nps_oficial(file_prefix, f"VE_Modelos_{foco[:6]}"), f_causa, f_sub, f_nps, f_imp)
-            if not df_mod.empty:
-                filtro_local = st.multiselect("Filtrar Modelo", limpar(df_mod['Modelo'].unique()), key="sel_mod2")
-                if filtro_local: df_mod = df_mod[df_mod['Modelo'].isin(filtro_local)]
-                exibir_tamanho_amostra(df_mod)
-                st.subheader("Visão por Modelo")
-                mostrar_tabela_formatada(df_mod, f"{foco}_Modelos.xlsx")
-            else: st.info(f"Nenhum dado encontrado para {foco} por Modelo.")
-        else: st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
-
+# --- CICLO DE REVISÕES ---
 elif tipo_analise == "Ciclo de Revisões":
     if dep_prefix == "VE":
         st.title("🔧 Ciclo de Revisões")
         st.warning("Selecione 'Pós-Vendas' no menu lateral para visualizar esta análise.")
     else:
-        file_prefix = "Analise_Revisoes_Yamaha"
-        df_cons = aplicar_filtros_globais(ler_dados_nps_oficial(file_prefix, "Consolidado_PBI_Revisoes"), f_causa, f_sub, f_nps, f_imp)
+        file = "Analise_Revisoes_Yamaha.xlsx"
+        df_cons = aplicar_filtros_globais(ler_dados_nps_oficial(file, "Consolidado_PBI_Revisoes"), f_causa, f_sub, f_nps, f_imp)
         st.title("🔧 Ciclo de Revisões (Pós-Vendas)")
         
         if not df_cons.empty:
@@ -505,7 +615,7 @@ elif tipo_analise == "Ciclo de Revisões":
             st.info("Arquivo de Ciclo de Revisões não encontrado ou vazio.")
 
 # ==========================================
-# FOOTER
+# FOOTER / INFO DA MARCA
 # ==========================================
 st.sidebar.markdown("---")
 st.sidebar.markdown(
