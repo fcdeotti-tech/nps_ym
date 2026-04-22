@@ -123,6 +123,7 @@ def gerar_grafico_colunas_comparativo(df, col_dimensao, causa):
 # ==========================================
 USUARIOS = {
     "diretoria_yamaha": {"nome": "Diretoria Yamaha", "senha": "yamaha_nps_2026"},
+    "Thyago": {"nome": "Thyago Angelo", "senha": "yamaha_nps_2026"},
     "admin": {"nome": "Fernando Deotti", "senha": "root_specialist"}
 }
 if "autenticado" not in st.session_state: st.session_state["autenticado"] = False
