@@ -33,7 +33,7 @@ CORES_SEGMENTOS = {
 }
 
 # ==========================================
-# FUNÇÕES DE GRÁFICOS E UTILITÁRIOS (BLINDADOS GCP)
+# FUNÇÕES DE GRÁFICOS E UTILITÁRIOS
 # ==========================================
 def gerar_grafico_impacto_corrigido(df_plot, col_y, altura=350):
     if df_plot.empty or 'Impacto' not in df_plot.columns: return go.Figure().update_layout(title="Sem dados", plot_bgcolor='rgba(0,0,0,0)')
@@ -49,21 +49,6 @@ def gerar_grafico_impacto_corrigido(df_plot, col_y, altura=350):
     fig.update_layout(xaxis=dict(range=[-max_abs*1.3, max_abs*1.3], zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=False), yaxis=dict(tickfont=dict(size=11)), plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=10, r=40, t=30, b=30), height=max(altura, len(valores_x) * 22))
     return fig
 
-def gerar_grafico_nps_barras(df, col_x, titulo="NPS"):
-    if df.empty or 'NPS' not in df.columns: return go.Figure()
-    df_plot = df.copy()
-    df_plot['NPS'] = pd.to_numeric(df_plot['NPS'], errors='coerce').fillna(0.0)
-    df_plot = df_plot.sort_values('NPS', ascending=False)
-    
-    x_vals = df_plot[col_x].astype(str).tolist()
-    y_vals = df_plot['NPS'].tolist()
-    cores = [COR_TURQUESA if v >= 0 else COR_LARANJA for v in y_vals]
-    textos = [f"{v:.1f}" for v in y_vals]
-    
-    fig = go.Figure(go.Bar(x=x_vals, y=y_vals, marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)))
-    fig.update_layout(title=titulo, plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor='gray', showgrid=True, gridcolor='#E5E7EB'), xaxis=dict(tickangle=-45), height=400, margin=dict(t=50, b=100))
-    return fig
-
 def gerar_matriz_dispersao(df, col_dimensao, altura=350):
     if df.empty or 'Gap' not in df.columns or 'NPS' not in df.columns: return go.Figure().update_layout(title="Sem dados para a Matriz", plot_bgcolor='rgba(0,0,0,0)')
     df_plot = df.copy()
@@ -75,6 +60,19 @@ def gerar_matriz_dispersao(df, col_dimensao, altura=350):
     cores = [COR_LARANJA if val < 0 else COR_TURQUESA for val in valores_x]
     fig = go.Figure(go.Scatter(x=valores_x, y=valores_y, mode='markers+text', text=textos, textposition='top center', cliponaxis=False, marker=dict(size=12, color=cores, line=dict(width=1, color='DarkSlateGrey'))))
     fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title='Impacto no NPS Nacional', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=True, gridcolor='#E5E7EB'), yaxis=dict(title=f'NPS da {col_dimensao}', showgrid=True, gridcolor='#E5E7EB'), margin=dict(l=40, r=40, t=30, b=30), height=altura)
+    return fig
+
+def gerar_grafico_nps_barras(df, col_x, titulo="NPS"):
+    if df.empty or 'NPS' not in df.columns: return go.Figure()
+    df_plot = df.copy()
+    df_plot['NPS'] = pd.to_numeric(df_plot['NPS'], errors='coerce').fillna(0.0)
+    df_plot = df_plot.sort_values('NPS', ascending=False)
+    x_vals = df_plot[col_x].astype(str).tolist()
+    y_vals = df_plot['NPS'].tolist()
+    cores = [COR_TURQUESA if v >= 0 else COR_LARANJA for v in y_vals]
+    textos = [f"{v:.1f}" for v in y_vals]
+    fig = go.Figure(go.Bar(x=x_vals, y=y_vals, marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)))
+    fig.update_layout(title=titulo, plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor='gray', showgrid=True, gridcolor='#E5E7EB'), xaxis=dict(tickangle=-45), height=400, margin=dict(t=50, b=100))
     return fig
 
 def gerar_grafico_colunas_comparativo(df, col_dimensao, causa):
@@ -252,6 +250,7 @@ st.sidebar.markdown("---")
 departamento = st.sidebar.radio("Segmento", ["Vendas (VE)", "Pós-Vendas (PV)"])
 dep_prefix = "VE" if departamento == "Vendas (VE)" else "PV"
 
+# MENU PRINCIPAL
 tipo_analise = st.sidebar.selectbox("Tipo de Análise", ["Resumo Executivo", "Contribuição Total", "Análise de Neutros", "Análise de Detratores", "Ciclo de Revisões"])
 
 st.sidebar.markdown("---")
@@ -286,6 +285,7 @@ if tipo_analise == "Resumo Executivo":
 
     if not df_causas_resumo.empty:
         try:
+            # 1. Cálculo real do NPS e Componentes
             val_pro, val_neu, val_det = 0.0, 0.0, 0.0
             pct_neu_plus, pct_neu_minus, pct_det_plus, pct_det_minus = 0.0, 0.0, 0.0, 0.0
             
@@ -489,7 +489,7 @@ elif tipo_analise == "Contribuição Total":
         if dep_prefix == "VE": render_aba_comparativa("VE_Mod_C_Sub", 'Modelo')
         else: st.info("Análise de modelo disponível em 'Ciclo de Revisões'.")
 
-    # --- ABA METODOLOGIA RESTAURADA E COMPLETA ---
+    # --- ABA METODOLOGIA ---
     with t6:
         st.header("Metodologia Insights&Etc")
         
@@ -605,6 +605,7 @@ elif tipo_analise in ["Análise de Neutros", "Análise de Detratores"]:
                 df_c = df_causas_nd.groupby('Causa da nota de recomendação').agg({'Gap':'sum', 'NPS':'mean', vol_col:'sum'}).reset_index()
                 df_s = df_causas_nd.groupby(['Causa da nota de recomendação', 'Subcausa da nota de recomendação']).agg({'Gap':'sum', 'NPS':'mean', vol_col:'sum'}).reset_index()
                 
+                # Trava N>=10 nas causas específicas
                 df_c_plot = df_c[(~df_c['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')) & (df_c[vol_col] >= 10)].copy()
                 df_s_plot = df_s[(~df_s['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)) & (df_s[vol_col] >= 10)].copy()
                 
@@ -637,8 +638,8 @@ elif tipo_analise == "Ciclo de Revisões":
         
         if not df_cons.empty:
             if 'Modelo' in df_cons.columns:
-                filtro_local = st.multiselect("Filtrar Modelo", limpar(df_cons['Modelo'].unique()), key="sel_mod_rev")
-                if filtro_local: df_cons = df_cons[df_cons['Modelo'].isin(filtro_local)]
+                df_cons = df_cons.drop(columns=['Modelo'])
+                df_cons = df_cons.drop_duplicates()
 
             if not df_cons.empty:
                 exibir_tamanho_amostra(df_cons)
@@ -709,7 +710,8 @@ elif tipo_analise == "Ciclo de Revisões":
                 st.markdown("---")
                 rev_sel = st.selectbox("Detalhar Revisão", ordem)
                 df_det = df_cons[df_cons['Ciclo'] == rev_sel]
-                mostrar_tabela_formatada(df_det.drop(columns=['Ciclo', 'Aba_Origem'], errors='ignore'), "Detalhe_Revisoes.xlsx")
+                df_det_view = df_det.drop(columns=['Ciclo', 'Aba_Origem'], errors='ignore').drop_duplicates()
+                mostrar_tabela_formatada(df_det_view, "Detalhe_Revisoes.xlsx")
             else: st.info("Não há dados de Revisões após aplicar os filtros.")
         else: st.info("Arquivo de Ciclo de Revisões não encontrado ou vazio.")
 
