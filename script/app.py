@@ -33,105 +33,54 @@ CORES_SEGMENTOS = {
 }
 
 # ==========================================
-# FUNÇÕES DE GRÁFICOS (BLINDADOS GCP - LISTAS NATIVAS)
+# FUNÇÕES DE GRÁFICOS E UTILITÁRIOS
 # ==========================================
 def gerar_grafico_impacto_corrigido(df_plot, col_y, altura=350):
-    if df_plot.empty or 'Impacto' not in df_plot.columns:
-        return go.Figure().update_layout(title="Sem dados", plot_bgcolor='rgba(0,0,0,0)')
-
+    if df_plot.empty or 'Impacto' not in df_plot.columns: return go.Figure().update_layout(title="Sem dados", plot_bgcolor='rgba(0,0,0,0)')
     df_plot = df_plot.copy()
     df_plot['Impacto'] = pd.to_numeric(df_plot['Impacto'], errors='coerce').fillna(0.0)
     df_plot = df_plot.sort_values('Impacto', ascending=True)
-
     eixo_y = df_plot[col_y].astype(str).tolist()
     valores_x = df_plot['Impacto'].tolist()
-
     cores = [COR_LARANJA if val < 0 else COR_TURQUESA for val in valores_x]
     textos = [f"{val:.3f}" if abs(val) > 0 and abs(val) < 0.1 else f"{val:.1f}" for val in valores_x]
-
-    fig = go.Figure(go.Bar(
-        x=valores_x, y=eixo_y, orientation='h', marker_color=cores,
-        text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)
-    ))
-
+    fig = go.Figure(go.Bar(x=valores_x, y=eixo_y, orientation='h', marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)))
     max_abs = max([abs(v) for v in valores_x]) if valores_x else 1.0
-    max_range = (max_abs * 1.3) if max_abs > 0 else 1.0
-
-    fig.update_layout(
-        xaxis=dict(range=[-max_range, max_range], zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=False),
-        yaxis=dict(tickfont=dict(size=11)),
-        plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(l=10, r=40, t=30, b=30),
-        height=max(altura, len(valores_x) * 22)
-    )
+    fig.update_layout(xaxis=dict(range=[-max_abs*1.3, max_abs*1.3], zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=False), yaxis=dict(tickfont=dict(size=11)), plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=10, r=40, t=30, b=30), height=max(altura, len(valores_x) * 22))
     return fig
 
 def gerar_matriz_dispersao(df, col_dimensao, altura=350):
-    if df.empty or 'Gap' not in df.columns or 'NPS' not in df.columns: 
-        return go.Figure().update_layout(title="Sem dados para a Matriz", plot_bgcolor='rgba(0,0,0,0)')
-    
+    if df.empty or 'Gap' not in df.columns or 'NPS' not in df.columns: return go.Figure().update_layout(title="Sem dados para a Matriz", plot_bgcolor='rgba(0,0,0,0)')
     df_plot = df.copy()
     df_plot['Gap'] = pd.to_numeric(df_plot['Gap'], errors='coerce').fillna(0.0)
     df_plot['NPS'] = pd.to_numeric(df_plot['NPS'], errors='coerce').fillna(0.0)
-
     valores_x = df_plot['Gap'].tolist()
     valores_y = df_plot['NPS'].tolist()
     textos = df_plot[col_dimensao].astype(str).tolist()
     cores = [COR_LARANJA if val < 0 else COR_TURQUESA for val in valores_x]
-
-    fig = go.Figure(go.Scatter(
-        x=valores_x, y=valores_y, mode='markers+text',
-        text=textos, textposition='top center', cliponaxis=False,
-        marker=dict(size=12, color=cores, line=dict(width=1, color='DarkSlateGrey'))
-    ))
-
-    fig.update_layout(
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(title='Impacto no NPS Nacional', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=True, gridcolor='#E5E7EB'),
-        yaxis=dict(title=f'NPS da {col_dimensao}', showgrid=True, gridcolor='#E5E7EB'), 
-        margin=dict(l=40, r=40, t=30, b=30),
-        height=altura
-    )
+    fig = go.Figure(go.Scatter(x=valores_x, y=valores_y, mode='markers+text', text=textos, textposition='top center', cliponaxis=False, marker=dict(size=12, color=cores, line=dict(width=1, color='DarkSlateGrey'))))
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title='Impacto no NPS Nacional', zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=True, gridcolor='#E5E7EB'), yaxis=dict(title=f'NPS da {col_dimensao}', showgrid=True, gridcolor='#E5E7EB'), margin=dict(l=40, r=40, t=30, b=30), height=altura)
     return fig
 
 def gerar_grafico_colunas_comparativo(df, col_dimensao, causa):
     if df.empty or 'Impacto' not in df.columns: return go.Figure()
-    
     df_plot = df.copy()
     df_plot['Impacto'] = pd.to_numeric(df_plot['Impacto'], errors='coerce').fillna(0.0)
     df_plot = df_plot.sort_values('Impacto', ascending=False)
-    
     eixo_x = df_plot[col_dimensao].astype(str).tolist()
     valores_y = df_plot['Impacto'].tolist()
-
     cores = [COR_LARANJA if val < 0 else COR_TURQUESA for val in valores_y]
     textos = [f"{val:.3f}" if abs(val) > 0 and abs(val) < 0.1 else f"{val:.1f}" for val in valores_y]
-
-    fig = go.Figure(go.Bar(
-        x=eixo_x, y=valores_y, marker_color=cores,
-        text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)
-    ))
-
+    fig = go.Figure(go.Bar(x=eixo_x, y=valores_y, marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)))
     max_abs = max([abs(v) for v in valores_y]) if valores_y else 1.0
-    max_range = (max_abs * 1.3) if max_abs > 0 else 1.0
-
-    fig.update_layout(
-        title=f"Impacto por {col_dimensao}: {causa}",
-        plot_bgcolor='rgba(0,0,0,0)',
-        yaxis=dict(range=[-max_range, max_range], zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=True, gridcolor='#E5E7EB'),
-        xaxis=dict(tickangle=-45), 
-        height=400, margin=dict(t=50, b=100)
-    )
+    fig.update_layout(title=f"Impacto por {col_dimensao}: {causa}", plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(range=[-max_abs*1.3, max_abs*1.3], zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=True, gridcolor='#E5E7EB'), xaxis=dict(tickangle=-45), height=400, margin=dict(t=50, b=100))
     return fig
 
 def gerar_grafico_distribuicao_segmentos(df, col_dimensao):
     if df.empty: return go.Figure()
     df_plot = df.copy()
-    
     vol_col = next((c for c in ['N_valido', 'Respondentes', 'Volume', 'Volume (N)'] if c in df_plot.columns), None)
-    if vol_col:
-        df_plot = df_plot.sort_values(vol_col, ascending=True)
-    
+    if vol_col: df_plot = df_plot.sort_values(vol_col, ascending=True)
     col_mapping = {}
     for col in df_plot.columns:
         c_norm = col.upper().replace(" ", "").replace('−', '-').replace('–', '-').replace('—', '-')
@@ -139,39 +88,19 @@ def gerar_grafico_distribuicao_segmentos(df, col_dimensao):
         elif 'NEUTRO-' in c_norm: col_mapping['Neutros-'] = col
         elif 'NEUTRO+' in c_norm: col_mapping['Neutros+'] = col
         elif 'PROMOTOR' in c_norm: col_mapping['Promotores'] = col
-
     fig = go.Figure()
     ordem_desejada = ['Detratores', 'Neutros-', 'Neutros+', 'Promotores']
-    
     for label in ordem_desejada:
         if label in col_mapping:
             col_excel = col_mapping[label]
             x_vals = pd.to_numeric(df_plot[col_excel], errors='coerce').fillna(0).tolist()
             y_vals = df_plot[col_dimensao].astype(str).tolist()
-            
-            fig.add_trace(go.Bar(
-                name=label,
-                y=y_vals,
-                x=x_vals,
-                orientation='h',
-                marker_color=CORES_SEGMENTOS[label],
-                text=[f"{v:.0f}%" if v >= 5 else "" for v in x_vals], 
-                textposition='inside'
-            ))
-
-    fig.update_layout(
-        barmode='stack',
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(title="Distribuição %", range=[0, 100], showgrid=False, zeroline=False),
-        yaxis=dict(tickfont=dict(size=11)),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=10, r=40, t=50, b=20),
-        height=max(350, len(df_plot) * 35)
-    )
+            fig.add_trace(go.Bar(name=label, y=y_vals, x=x_vals, orientation='h', marker_color=CORES_SEGMENTOS[label], text=[f"{v:.0f}%" if v >= 5 else "" for v in x_vals], textposition='inside'))
+    fig.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title="Distribuição %", range=[0, 100], showgrid=False, zeroline=False), yaxis=dict(tickfont=dict(size=11)), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), margin=dict(l=10, r=40, t=50, b=20), height=max(350, len(df_plot) * 35))
     return fig
 
 # ==========================================
-# 1. LOGIN E CONFIGURAÇÕES BÁSICAS
+# 1. LOGIN E ACESSO
 # ==========================================
 USUARIOS = {
     "diretoria_yamaha": {"nome": "Diretoria Yamaha", "senha": "yamaha_nps_2026"},
@@ -184,19 +113,12 @@ def verificar_login():
     u, s = st.session_state["campo_usuario"], st.session_state["campo_senha"]
     if u in USUARIOS and USUARIOS[u]["senha"] == s:
         st.session_state.update({"autenticado": True, "nome_usuario": USUARIOS[u]["nome"], "erro_login": False})
-    else:
-        st.session_state["erro_login"] = True
-
-def fazer_logout():
-    st.session_state["autenticado"] = False
+    else: st.session_state["erro_login"] = True
 
 if not st.session_state["autenticado"]:
     c1, c2 = st.columns([1, 15])
-    try:
-        c1.image("image/LogoRoute.png", width=100)
-    except:
-        c1.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Yamaha_Motor_Logo.svg/1024px-Yamaha_Motor_Logo.svg.png", width=70)
-        
+    try: c1.image("image/LogoRoute.png", width=100)
+    except: c1.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Yamaha_Motor_Logo.svg/1024px-Yamaha_Motor_Logo.svg.png", width=70)
     c2.title("Yamaha NPS Explorer")
     st.markdown("---")
     with st.columns([1, 2])[0]:
@@ -205,19 +127,12 @@ if not st.session_state["autenticado"]:
         st.text_input("Senha", type="password", key="campo_senha")
         st.button("Entrar", on_click=verificar_login)
         if st.session_state.get("erro_login"): st.error("Credenciais inválidas.")
-        
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown(
-            f'<div style="text-align: left; font-family: Montserrat;">'
-            f'<span style="font-weight:700; font-size:16px;">INSIGHTS</span>'
-            f'<span style="color:#FF6B6B; font-weight:900; font-size:18px;">&</span>'
-            f'<span style="font-weight:400; font-size:14px;">Etc</span>'
-            f'</div>', unsafe_allow_html=True
-        )
+        st.markdown(f'<div style="text-align: left; font-family: Montserrat;"><span style="font-weight:700; font-size:16px;">INSIGHTS</span><span style="color:#FF6B6B; font-weight:900; font-size:18px;">&</span><span style="font-weight:400; font-size:14px;">Etc</span></div>', unsafe_allow_html=True)
     st.stop()
 
 # ==========================================
-# 2. DADOS E BRITADEIRA 
+# 2. DADOS E BRITADEIRA
 # ==========================================
 def extrair_numero(val):
     if pd.isna(val): return 0.0
@@ -248,26 +163,18 @@ def ler_dados_nps_oficial(file_name, sheet_name):
 
 def convert_df_to_excel(df):
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Dados')
+    with pd.ExcelWriter(output, engine='openpyxl') as writer: df.to_excel(writer, index=False, sheet_name='Dados')
     return output.getvalue()
 
 def exibir_tamanho_amostra(df):
     if df.empty: return
-    n = 0
-    for c in ['N_valido', 'Respondentes', 'Volume (N)', 'Volume']:
-        if c in df.columns:
-            n = df[c].sum()
-            break
+    n = next((df[c].sum() for c in ['N_valido', 'Respondentes', 'Volume (N)', 'Volume'] if c in df.columns), 0)
     st.markdown(f"<div style='text-align: right; font-size: 13px; color: #888; margin-bottom: 5px;'>Tamanho da Amostra (N): <b>{int(n):,}</b></div>".replace(',', '.'), unsafe_allow_html=True)
 
 def mostrar_tabela_formatada(df, filename_download="dados.xlsx", hide_cols=None):
     if df.empty: return st.info("Sem dados.")
     df_disp = df.copy()
-    
-    if hide_cols: 
-        df_disp = df_disp.drop(columns=hide_cols, errors='ignore')
-        
+    if hide_cols: df_disp = df_disp.drop(columns=hide_cols, errors='ignore')
     if 'Gap' in df_disp.columns and 'Impacto' in df_disp.columns: df_disp = df_disp.drop(columns=['Impacto'])
     df_disp = df_disp.rename(columns={'N_valido': 'Respondentes', 'Gap': 'Impacto'})
     
@@ -285,9 +192,7 @@ def mostrar_tabela_formatada(df, filename_download="dados.xlsx", hide_cols=None)
         df_disp = df_disp[cols]
 
     fmt = {c: lambda x: f"{x:.1f}" if pd.notna(x) else "-" for c in df_disp.columns if any(t in c for t in ['NPS', 'Impacto', 'Contribuição', '% Respondentes', 'NPS Atual', 'NPS Potencial', 'Ganho Possível']) and c != 'Segmento_NPS'}
-    
     if 'Respondentes' in df_disp.columns: fmt['Respondentes'] = lambda x: f"{int(x)}" if pd.notna(x) else "-"
-    
     st.dataframe(df_disp.style.format(fmt), use_container_width=True, hide_index=True)
     st.download_button("📥 Baixar Excel", convert_df_to_excel(df_disp), filename_download, "application/vnd.ms-excel")
 
@@ -322,21 +227,18 @@ def aplicar_filtros_globais(df, f_causa, f_sub, f_nps, f_imp):
 # ==========================================
 try:
     c_logo1, c_logo2, c_logo3 = st.sidebar.columns([1, 2, 1])
-    with c_logo2:
-        st.image("image/LogoRoute.png", use_container_width=True)
-except:
-    st.sidebar.title("ROUTE")
+    with c_logo2: st.image("image/LogoRoute.png", use_container_width=True)
+except: st.sidebar.title("ROUTE")
 
 st.sidebar.markdown(f"<div style='text-align: center;'><b>Olá, {st.session_state['nome_usuario']}!</b></div>", unsafe_allow_html=True)
-if st.sidebar.button("Sair (Logout)", use_container_width=True):
-    st.session_state["autenticado"] = False
-    st.rerun()
+if st.sidebar.button("Sair (Logout)", use_container_width=True): st.session_state["autenticado"] = False; st.rerun()
 
 st.sidebar.markdown("---")
 departamento = st.sidebar.radio("Segmento", ["Vendas (VE)", "Pós-Vendas (PV)"])
 dep_prefix = "VE" if departamento == "Vendas (VE)" else "PV"
 
-tipo_analise = st.sidebar.selectbox("Tipo de Análise", ["Contribuição Total", "Análise de Neutros", "Análise de Detratores", "Ciclo de Revisões"])
+# MENU PRINCIPAL (Resumo Executivo no topo)
+tipo_analise = st.sidebar.selectbox("Tipo de Análise", ["Resumo Executivo", "Contribuição Total", "Análise de Neutros", "Análise de Detratores", "Ciclo de Revisões"])
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Filtros Globais")
@@ -351,18 +253,128 @@ else: f_causa, f_sub = [], []
 
 f_nps = st.sidebar.multiselect("Faixa de NPS", ["Menor que 0", "0 a 49", "50 a 74", "75 a 100"])
 f_imp = st.sidebar.multiselect("Impacto", ["Positivo", "Negativo"])
-
 termos_omitir_graficos = ['-', 'Não especificada', 'Nenhuma das opções acima', 'Nenhuma subcausa específica', 'Total', 'TOTAL DA CAUSA']
 
 # ==========================================
 # 4. LÓGICA DE VISUALIZAÇÃO
 # ==========================================
-if tipo_analise == "Contribuição Total":
+
+# --- RESUMO EXECUTIVO ---
+if tipo_analise == "Resumo Executivo":
+    st.title(f"📑 Resumo Executivo: {departamento}")
+    st.markdown("Esta página consolida os principais insights, cruzando dados de contribuição, detratores, neutros e revisões.")
+    
+    # Bases necessárias
+    df_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Tot_C_Sub")
+    df_neu = ler_dados_nps_oficial("Analise_Neutros_Yamaha.xlsx", f"{dep_prefix}_Causas_Neutro")
+    df_det = ler_dados_nps_oficial("Analise_Detratores_Yamaha.xlsx", f"{dep_prefix}_Causas_Detrat")
+    df_reg_pot = ler_dados_nps_oficial("Analise_Neutros_Yamaha.xlsx", f"{dep_prefix}_Potencial_Regiao")
+    df_reg_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Reg_C_Sub" if dep_prefix=="VE" else "PV_Tot_Reg_C_Sub")
+    df_rev = ler_dados_nps_oficial("Analise_Revisoes_Yamaha.xlsx", "Consolidado_PBI_Revisoes") if dep_prefix == "PV" else pd.DataFrame()
+
+    if not df_tot.empty:
+        try:
+            # 1. Cálculo real do NPS (Soma das contribuições, igual ao Waterfall)
+            df_causas_puras = df_tot[~df_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')]
+            nps_atual = df_causas_puras['Contribuição'].sum()
+            
+            # 1. Visão Geral
+            st.header("1. Panorama Geral do NPS")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("NPS Atual", f"{nps_atual:.1f}")
+            
+            # Buscando composição Exata na linha 'TOTAL NACIONAL' da aba de Regiões
+            val_pro, val_neu, val_det = 0.0, 0.0, 0.0
+            pct_neu_plus, pct_neu_minus, pct_det_plus, pct_det_minus = 0.0, 0.0, 0.0, 0.0
+            
+            if not df_reg_pot.empty:
+                linha_tot = df_reg_pot[df_reg_pot['Região'].astype(str).str.upper().isin(['TOTAL NACIONAL', 'TOTAL'])]
+                if not linha_tot.empty:
+                    for c in linha_tot.columns:
+                        c_upper = c.upper().replace(" ", "")
+                        val = pd.to_numeric(linha_tot.iloc[0][c], errors='coerce')
+                        if pd.isna(val): continue
+                        if 'NEUTRO+' in c_upper: pct_neu_plus = val
+                        elif 'NEUTRO-' in c_upper: pct_neu_minus = val
+                        elif 'DETRATOR+' in c_upper: pct_det_plus = val
+                        elif 'DETRATOR-' in c_upper: pct_det_minus = val
+                        elif 'PROMOTOR' in c_upper: val_pro = val
+                        elif 'NEUTRO' in c_upper: val_neu = val
+                        elif 'DETRATOR' in c_upper: val_det = val
+
+            # Fallbacks caso as colunas agrupadas não existam, mas as quebradas sim
+            if val_neu == 0.0 and (pct_neu_plus > 0 or pct_neu_minus > 0): val_neu = pct_neu_plus + pct_neu_minus
+            if val_det == 0.0 and (pct_det_plus > 0 or pct_det_minus > 0): val_det = pct_det_plus + pct_det_minus
+            
+            # Fallback matemático só em último caso (se não achar os arquivos extras)
+            if val_pro == 0.0 and val_det == 0.0:
+                val_pro = (nps_atual + 100) / 2
+                val_det = val_pro - nps_atual
+                val_neu = 100 - val_pro - val_det
+
+            c2.metric("Promotores", f"{val_pro:.1f}%")
+            c3.metric("Neutros", f"{val_neu:.1f}%")
+            c4.metric("Detratores", f"{val_det:.1f}%")
+
+            # 2. Causas Principais
+            st.header("2. Alavancas e Âncoras Principais")
+            df_causas_obj = df_tot[~df_tot['Causa da nota de recomendação'].isin(termos_omitir_graficos + ['Outro(s) motivo(s)', 'Não indicou motivo específico'])]
+            
+            if not df_causas_obj.empty:
+                causa_top = df_causas_obj.loc[df_causas_obj['Gap'].idxmax()]
+                causa_bot = df_causas_obj.loc[df_causas_obj['Gap'].idxmin()]
+                st.markdown(f"A **principal causa objetiva** que eleva o NPS é **{causa_top['Causa da nota de recomendação']}**, gerando um impacto positivo de **{causa_top['Gap']:.2f} pontos**.")
+                st.markdown(f"Por outro lado, a causa que mais prejudica a nota atual é **{causa_bot['Causa da nota de recomendação']}**, subtraindo **{causa_bot['Gap']:.2f} pontos**.")
+
+            # 3. Quebra de Segmentos (+ / -) e Potencial
+            st.header("3. Oportunidades de Reversão (+ e -)")
+            
+            st.markdown(f"**Composição Qualificada:**")
+            st.markdown(f"* Os Neutros dividem-se em **Neutros+ ({pct_neu_plus:.1f}%)** e Neutros- ({pct_neu_minus:.1f}%).")
+            st.markdown(f"* Os Detratores dividem-se em **Detratores+ ({pct_det_plus:.1f}%)** e Detratores- ({pct_det_minus:.1f}%).")
+            
+            # Matemática do NPS Potencial
+            nps_pot_neu = nps_atual + pct_neu_plus
+            nps_pot_det = nps_atual + (2 * pct_det_plus)
+            nps_pot_total = nps_atual + pct_neu_plus + (2 * pct_det_plus)
+
+            st.markdown("**Simulação de Impacto no NPS Geral:**")
+            st.markdown(f"* Se convertermos todos os **Neutros+** em Promotores, o NPS subiria para **{nps_pot_neu:.1f}**.")
+            st.markdown(f"* Se convertermos todos os **Detratores+** em Promotores, o NPS subiria para **{nps_pot_det:.1f}**.")
+            st.markdown(f"* Se convertermos ambos (**Neutros+ e Detratores+**), o NPS dispararia para **{nps_pot_total:.1f}**.")
+
+            # 4. Fortalezas e Fraquezas Geográficas
+            st.header("4. Fortalezas e Fraquezas Geográficas")
+            if not df_reg_tot.empty:
+                df_reg_limpo = df_reg_tot[(df_reg_tot['Causa da nota de recomendação'].isin(['-', 'Total'])) & (df_reg_tot['N_valido'] >= 30)]
+                if not df_reg_limpo.empty:
+                    best_reg = df_reg_limpo.loc[df_reg_limpo['Gap'].idxmax()]
+                    worst_reg = df_reg_limpo.loc[df_reg_limpo['Gap'].idxmin()]
+                    st.markdown(f"**Fortaleza:** A **{best_reg['Região']}** é o maior motor do resultado, contribuindo com **{best_reg['Gap']:.2f} pontos** adicionais.")
+                    st.markdown(f"**Fraqueza:** A **{worst_reg['Região']}** é a maior ofendora, derrubando o NPS em **{worst_reg['Gap']:.2f} pontos**.")
+            
+            # 5. Revisões (Apenas PV)
+            if dep_prefix == "PV" and not df_rev.empty:
+                st.header("5. Impacto do Ciclo de Revisões")
+                df_rev_tot = df_rev[~df_rev['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Ciclo').agg({'NPS':'mean', 'Gap':'sum', 'N_valido':'sum'}).reset_index()
+                if not df_rev_tot.empty:
+                    best_rev = df_rev_tot.loc[df_rev_tot['Gap'].idxmax()]
+                    worst_rev = df_rev_tot.loc[df_rev_tot['Gap'].idxmin()]
+                    nps_medio_rev = df_rev_tot['NPS'].mean()
+                    st.markdown(f"A revisão que mais agrega valor é a **{best_rev['Ciclo']}** (NPS: {best_rev['NPS']:.1f}).")
+                    st.markdown(f"A revisão com maior desgaste é a **{worst_rev['Ciclo']}** (NPS: {worst_rev['NPS']:.1f}).")
+                    st.markdown(f"**Evolução Potencial:** Se a {worst_rev['Ciclo']} fosse nivelada à média do ciclo ({nps_medio_rev:.1f}), o NPS total de Pós-Vendas sofreria um ganho substancial de volume qualificado.")
+        except Exception as e:
+            st.warning(f"Erro ao compilar algumas métricas do resumo executivo. Verifique se as planilhas base estão completas.")
+    else:
+        st.info("Bases de dados não encontradas para gerar o Resumo Executivo.")
+
+# --- CONTRIBUIÇÃO TOTAL ---
+elif tipo_analise == "Contribuição Total":
     st.title(f"📊 Contribuição e Impactos: {departamento}")
     t1, t2, t3, t4, t5, t6 = st.tabs(["Geral", "Regiões", "Grupos", "Concessionárias", "Modelos", "Metodologia"])
     file = "Analise_NPS_Yamaha.xlsx"
 
-    # --- ABA GERAL ---
     with t1:
         st.subheader("Filtros da Visão Geral")
         df_master = ler_dados_nps_oficial(file, f"{dep_prefix}_Master")
@@ -424,17 +436,13 @@ if tipo_analise == "Contribuição Total":
         st.subheader("Detalhe por Subcausa")
         mostrar_tabela_formatada(df_s, "Geral_Subcausa.xlsx")
 
-    # --- ABAS COMPARATIVAS ---
     def render_aba_comparativa(sheet_name, col_dimensao):
         df_raw = ler_dados_nps_oficial(file, sheet_name)
         if df_raw.empty: return st.info(f"Nenhum dado encontrado para a visão de {col_dimensao}.")
-        
         mask_totais_base = (df_raw['Causa da nota de recomendação'].isin(['-', 'Total'])) & (df_raw['Subcausa da nota de recomendação'].isin(['-', 'Total']))
         entidades_validas = df_raw[mask_totais_base & (df_raw['N_valido'] >= 30)][col_dimensao].unique()
         df_comp = df_raw[df_raw[col_dimensao].isin(entidades_validas)]
-        
         if df_comp.empty: return st.info(f"Nenhum(a) {col_dimensao} possui amostra mínima de 30 entrevistas.")
-
         df_comp = aplicar_filtros_globais(df_comp, f_causa, f_sub, f_nps, f_imp)
         mask_totais = (df_comp['Causa da nota de recomendação'].isin(['-', 'Total'])) & (df_comp['Subcausa da nota de recomendação'].isin(['-', 'Total']))
         df_totais = df_comp[mask_totais].copy()
@@ -476,7 +484,7 @@ if tipo_analise == "Contribuição Total":
         if dep_prefix == "VE": render_aba_comparativa("VE_Mod_C_Sub", 'Modelo')
         else: st.info("Análise de modelo disponível em 'Ciclo de Revisões'.")
 
-    # --- ABA METODOLOGIA (NOVA) ---
+    # --- ABA METODOLOGIA RESTAURADA NA ÍNTEGRA ---
     with t6:
         st.header("Metodologia: Como Calculamos o Impacto")
         st.markdown("""
@@ -520,6 +528,19 @@ if tipo_analise == "Contribuição Total":
         **Interpretação:**
         A "Entrega Técnica" tem um **Impacto de +12**. Isso significa que, embora ela represente apenas 20% do volume de clientes (Peso), ela entrega 32% do resultado positivo do NPS. Trata-se de uma **"alavanca"** que puxa a nota geral para cima. 
         Se o Impacto fosse negativo, significaria que ela estaria entregando menos valor do que o seu peso sugere, atuando como uma **"âncora"** e roubando pontos do NPS geral.
+        
+        ---
+        
+        ### Quebras Estatísticas: O Poder do '+' e '-'
+        Em pesquisas de satisfação de alto rigor, olhar apenas para o "bloco" esconde oportunidades de rápido retorno (Quick Wins). Por isso, dividimos as categorias:
+        
+        * **Promotores (Notas 9 e 10):** Clientes leais que recomendam a marca.
+        * **Neutros+ (Nota 8):** Clientes quase promotores. Precisam de um leve encantamento para virar promotores.
+        * **Neutros- (Nota 7):** Clientes em risco. Perto de caírem para a detração por frustrações silenciosas.
+        * **Detratores+ (Notas 4 a 6):** Clientes insatisfeitos, mas recuperáveis com um plano de ação rápido.
+        * **Detratores- (Notas 0 a 3):** Clientes extremamente frustrados. Custam muito mais esforço e recurso para reverter a percepção.
+        
+        **Estratégia:** Focar nas causas de impacto em **Neutros+** e **Detratores+** traz a maior e mais rápida alavancagem matemática para o NPS Global.
         """)
 
 # --- ANÁLISE DE NEUTROS / DETRATORES ---
@@ -530,7 +551,6 @@ elif tipo_analise in ["Análise de Neutros", "Análise de Detratores"]:
     
     tabs = st.tabs(["Regiões", "Grupos", "Concessionárias", "Modelos", "Causas e Subcausas"])
     
-    # === 1. ABAS COMPARATIVAS (Região, Grupo, Conc, Modelo) ===
     dims_configs = [
         ('Região', f"{dep_prefix}_Potencial_Regiao"),
         ('Grupo', f"{dep_prefix}_Potencial_Grupo"),
@@ -543,86 +563,58 @@ elif tipo_analise in ["Análise de Neutros", "Análise de Detratores"]:
             if dim == 'Modelo' and dep_prefix == 'PV': 
                 st.info("A visão por modelo no Pós-Vendas está consolidada na análise de 'Ciclo de Revisões'.")
                 continue
-            
             df_aba = aplicar_filtros_globais(ler_dados_nps_oficial(file, sheet), f_causa, f_sub, f_nps, f_imp)
-            
             if not df_aba.empty:
                 vol_col = next((c for c in ['N_valido', 'Respondentes', 'Volume', 'Volume (N)'] if c in df_aba.columns), None)
                 if dim in ['Grupo', 'Concessionária', 'Modelo'] and vol_col:
-                    if len(df_aba) > 10:
-                        df_aba = df_aba.sort_values(vol_col, ascending=False).head(10)
-                
+                    if len(df_aba) > 10: df_aba = df_aba.sort_values(vol_col, ascending=False).head(10)
                 exibir_tamanho_amostra(df_aba)
-                
                 st.subheader(f"Distribuição de Segmentos NPS por {dim}")
                 st.plotly_chart(gerar_grafico_distribuicao_segmentos(df_aba, dim), use_container_width=True)
-                
                 st.subheader(f"Detalhamento Estatístico por {dim}")
                 mostrar_tabela_formatada(df_aba, f"{foco}_{dim}.xlsx", hide_cols=['Ganho Possível', 'Potencial'])
-            else:
-                st.info(f"Nenhum dado encontrado para {foco} por {dim}.")
+            else: st.info(f"Nenhum dado encontrado para {foco} por {dim}.")
 
-    # === 2. ABA CAUSAS E SUBCAUSAS (Agora no index 4) ===
     with tabs[4]:
         st.subheader(f"Visão Geral de Impacto ({foco})")
         df_causas_nd = ler_dados_nps_oficial(file, f"{dep_prefix}_Causas_{foco[:6]}")
-        
         if not df_causas_nd.empty:
             df_causas_nd = aplicar_filtros_globais(df_causas_nd, f_causa, f_sub, f_nps, f_imp)
-            
-            # FILTROS EXCLUSIVOS DA ABA CAUSAS
             col1, col2, col3, col4 = st.columns(4)
             f_reg_nd, f_grp_nd, f_con_nd, f_mod_nd = [], [], [], []
-            
             if 'Região' in df_causas_nd.columns:
                 reg_vals = [r for r in df_causas_nd['Região'].dropna().unique() if 'PERFIL' not in str(r).upper()]
                 f_reg_nd = col1.multiselect("Região", sorted(reg_vals), key=f"reg_nd_{foco}")
-            if 'Grupo' in df_causas_nd.columns: 
-                f_grp_nd = col2.multiselect("Grupo", sorted(df_causas_nd['Grupo'].dropna().unique()), key=f"grp_nd_{foco}")
-            if 'Concessionária' in df_causas_nd.columns: 
-                f_con_nd = col3.multiselect("Concessionária", sorted(df_causas_nd['Concessionária'].dropna().unique()), key=f"con_nd_{foco}")
-            if 'Modelo' in df_causas_nd.columns: 
-                f_mod_nd = col4.multiselect("Modelo", sorted(df_causas_nd['Modelo'].dropna().unique()), key=f"mod_nd_{foco}")
+            if 'Grupo' in df_causas_nd.columns: f_grp_nd = col2.multiselect("Grupo", sorted(df_causas_nd['Grupo'].dropna().unique()), key=f"grp_nd_{foco}")
+            if 'Concessionária' in df_causas_nd.columns: f_con_nd = col3.multiselect("Concessionária", sorted(df_causas_nd['Concessionária'].dropna().unique()), key=f"con_nd_{foco}")
+            if 'Modelo' in df_causas_nd.columns: f_mod_nd = col4.multiselect("Modelo", sorted(df_causas_nd['Modelo'].dropna().unique()), key=f"mod_nd_{foco}")
 
-            # Aplicação dos filtros locais de dimensão
             if f_reg_nd: df_causas_nd = df_causas_nd[df_causas_nd['Região'].isin(f_reg_nd)]
             if f_grp_nd: df_causas_nd = df_causas_nd[df_causas_nd['Grupo'].isin(f_grp_nd)]
             if f_con_nd: df_causas_nd = df_causas_nd[df_causas_nd['Concessionária'].isin(f_con_nd)]
             if f_mod_nd: df_causas_nd = df_causas_nd[df_causas_nd['Modelo'].isin(f_mod_nd)]
             
-            # Filtro de Segmento (se aplicável)
             if 'Segmento_NPS' in df_causas_nd.columns:
                 segmentos = sorted(df_causas_nd['Segmento_NPS'].dropna().unique())
                 segmento = st.selectbox("Filtrar Tipo de Cliente", ["Todos"] + list(segmentos), key=f"seg_nd_{foco}")
-                if segmento != "Todos":
-                    df_causas_nd = df_causas_nd[df_causas_nd['Segmento_NPS'] == segmento]
+                if segmento != "Todos": df_causas_nd = df_causas_nd[df_causas_nd['Segmento_NPS'] == segmento]
             
             exibir_tamanho_amostra(df_causas_nd)
             st.markdown("---")
-            
-            # Agregação dinâmica após os filtros
             if 'Gap' in df_causas_nd.columns:
                 df_causas_nd['Gap'] = pd.to_numeric(df_causas_nd['Gap'], errors='coerce').fillna(0.0)
-                
                 df_c = df_causas_nd.groupby('Causa da nota de recomendação')[['Gap']].sum().reset_index()
                 df_s = df_causas_nd.groupby(['Causa da nota de recomendação', 'Subcausa da nota de recomendação'])[['Gap']].sum().reset_index()
-                
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.subheader("Impacto por Causa")
-                    df_c_plot = df_c[~df_c['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].copy()
-                    df_c_plot = df_c_plot.rename(columns={'Gap': 'Impacto'})
-                    st.plotly_chart(gerar_grafico_impacto_corrigido(df_c_plot, 'Causa da nota de recomendação', altura=400), use_container_width=True)
+                    st.plotly_chart(gerar_grafico_impacto_corrigido(df_c[~df_c['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].rename(columns={'Gap': 'Impacto'}), 'Causa da nota de recomendação', altura=400), use_container_width=True)
                 with col_b:
                     st.subheader("Impacto por Subcausa")
-                    df_s_plot = df_s[~df_s['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].copy()
-                    df_s_plot = df_s_plot.rename(columns={'Gap': 'Impacto'})
-                    st.plotly_chart(gerar_grafico_impacto_corrigido(df_s_plot, 'Subcausa da nota de recomendação', altura=400), use_container_width=True)
-            
+                    st.plotly_chart(gerar_grafico_impacto_corrigido(df_s[~df_s['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)].rename(columns={'Gap': 'Impacto'}), 'Subcausa da nota de recomendação', altura=400), use_container_width=True)
             st.subheader("Tabelas de Detalhamento")
             mostrar_tabela_formatada(df_causas_nd, f"{foco}_Causas.xlsx", hide_cols=['Ganho Possível', 'Potencial'])
-        else:
-            st.info("Nenhum dado de causas detalhadas encontrado para este segmento.")
+        else: st.info("Nenhum dado de causas detalhadas encontrado para este segmento.")
 
 # --- CICLO DE REVISÕES ---
 elif tipo_analise == "Ciclo de Revisões":
@@ -646,28 +638,19 @@ elif tipo_analise == "Ciclo de Revisões":
                 ordem = ['Revisão 1', 'Revisão 2', 'Revisão 3', 'Revisão 4', 'Revisão 5 ou +']
                 nps_evol['Ciclo'] = pd.Categorical(nps_evol['Ciclo'], categories=ordem, ordered=True)
                 nps_evol = nps_evol.sort_values('Ciclo')
-                
                 if 'NPS' in nps_evol.columns:
                     fig = px.line(nps_evol, x='Ciclo', y='NPS', markers=True, text=[f"{x:.1f}" for x in nps_evol['NPS']], title="Evolução do NPS Médio por Ciclo")
                     fig.update_traces(textposition="top center")
                     st.plotly_chart(fig, use_container_width=True)
-                
                 rev_sel = st.selectbox("Detalhar Revisão", ordem)
                 df_det = df_cons[df_cons['Ciclo'] == rev_sel]
                 mostrar_tabela_formatada(df_det.drop(columns=['Ciclo', 'Aba_Origem'], errors='ignore'), "Detalhe_Revisoes.xlsx")
             else: st.info("Não há dados de Revisões após aplicar os filtros.")
-        else:
-            st.info("Arquivo de Ciclo de Revisões não encontrado ou vazio.")
+        else: st.info("Arquivo de Ciclo de Revisões não encontrado ou vazio.")
 
 # ==========================================
 # FOOTER / INFO DA MARCA
 # ==========================================
 st.sidebar.markdown("---")
-st.sidebar.markdown(
-    f'<div style="text-align: center; font-family: Montserrat;">'
-    f'<span style="color:white; font-weight:700; font-size:18px;">INSIGHTS</span>'
-    f'<span style="color:{COR_LARANJA}; font-weight:900; font-size:20px;">&</span>'
-    f'<span style="color:#9CA3AF; font-weight:400; font-size:16px;">Etc</span>'
-    f'</div>', unsafe_allow_html=True
-)
+st.sidebar.markdown(f'<div style="text-align: center; font-family: Montserrat;"><span style="color:white; font-weight:700; font-size:18px;">INSIGHTS</span><span style="color:{COR_LARANJA}; font-weight:900; font-size:20px;">&</span><span style="color:#9CA3AF; font-weight:400; font-size:16px;">Etc</span></div>', unsafe_allow_html=True)
 st.sidebar.caption("<div style='text-align: center;'>Dashboard Seguro: Yamaha Motors</div>", unsafe_allow_html=True)
