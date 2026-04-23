@@ -237,7 +237,7 @@ st.sidebar.markdown("---")
 departamento = st.sidebar.radio("Segmento", ["Vendas (VE)", "Pós-Vendas (PV)"])
 dep_prefix = "VE" if departamento == "Vendas (VE)" else "PV"
 
-# MENU PRINCIPAL (Resumo Executivo no topo)
+# MENU PRINCIPAL
 tipo_analise = st.sidebar.selectbox("Tipo de Análise", ["Resumo Executivo", "Contribuição Total", "Análise de Neutros", "Análise de Detratores", "Ciclo de Revisões"])
 
 st.sidebar.markdown("---")
@@ -259,20 +259,21 @@ termos_omitir_graficos = ['-', 'Não especificada', 'Nenhuma das opções acima'
 # 4. LÓGICA DE VISUALIZAÇÃO
 # ==========================================
 
-# --- NOVO: RESUMO EXECUTIVO ---
+# --- RESUMO EXECUTIVO ---
 if tipo_analise == "Resumo Executivo":
     st.title(f"📑 Resumo Executivo: {departamento}")
     st.markdown("Esta página consolida os principais insights, cruzando dados de contribuição, detratores, neutros e revisões.")
     
     # Bases necessárias
-    df_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Tot_C_Sub")
+    df_causas_resumo = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Tot_Causa")
+    df_subcausas_resumo = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Tot_C_Sub")
     df_reg_pot = ler_dados_nps_oficial("Analise_Neutros_Yamaha.xlsx", f"{dep_prefix}_Potencial_Regiao")
     df_reg_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Reg_C_Sub" if dep_prefix=="VE" else "PV_Tot_Reg_C_Sub")
     df_rev = ler_dados_nps_oficial("Analise_Revisoes_Yamaha.xlsx", "Consolidado_PBI_Revisoes") if dep_prefix == "PV" else pd.DataFrame()
 
-    if not df_tot.empty:
+    if not df_causas_resumo.empty:
         try:
-            # 1. Cálculo real do NPS e Componentes (Garantia Matemática)
+            # 1. Cálculo real do NPS e Componentes
             val_pro, val_neu, val_det = 0.0, 0.0, 0.0
             pct_neu_plus, pct_neu_minus, pct_det_plus, pct_det_minus = 0.0, 0.0, 0.0, 0.0
             
@@ -294,8 +295,8 @@ if tipo_analise == "Resumo Executivo":
             if val_neu == 0.0 and (pct_neu_plus > 0 or pct_neu_minus > 0): val_neu = pct_neu_plus + pct_neu_minus
             if val_det == 0.0 and (pct_det_plus > 0 or pct_det_minus > 0): val_det = pct_det_plus + pct_det_minus
             
-            # Recalcula o NPS Exato baseado em Promotores e Detratores para evitar o Bug de "0.0"
-            nps_atual = val_pro - val_det if val_pro > 0 else df_tot[~df_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')]['Contribuição'].sum()
+            df_causas_puras = df_causas_resumo[~df_causas_resumo['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')]
+            nps_atual = val_pro - val_det if val_pro > 0 else df_causas_puras['Contribuição'].sum()
 
             # 1. Visão Geral
             st.header("1. Panorama Geral do NPS")
@@ -305,14 +306,26 @@ if tipo_analise == "Resumo Executivo":
             c3.metric("Neutros", f"{val_neu:.1f}%")
             c4.metric("Detratores", f"{val_det:.1f}%")
 
-            # 2. Causas Principais
+            # 2. Causas Principais (CORREÇÃO DE LEITURA CAUSA X SUBCAUSA)
             st.header("2. Alavancas e Âncoras Principais")
-            df_causas_obj = df_tot[~df_tot['Causa da nota de recomendação'].isin(termos_omitir_graficos + ['Outro(s) motivo(s)', 'Não indicou motivo específico'])]
+            
+            df_causas_obj = df_causas_resumo[~df_causas_resumo['Causa da nota de recomendação'].isin(termos_omitir_graficos + ['Outro(s) motivo(s)', 'Não indicou motivo específico'])]
             if not df_causas_obj.empty:
+                df_causas_obj['Gap'] = pd.to_numeric(df_causas_obj['Gap'], errors='coerce').fillna(0.0)
                 causa_top = df_causas_obj.loc[df_causas_obj['Gap'].idxmax()]
                 causa_bot = df_causas_obj.loc[df_causas_obj['Gap'].idxmin()]
-                st.markdown(f"A **principal causa objetiva** que eleva o NPS é **{causa_top['Causa da nota de recomendação']}**, gerando um impacto positivo de **{causa_top['Gap']:.2f} pontos**.")
-                st.markdown(f"Por outro lado, a causa que mais prejudica a nota atual é **{causa_bot['Causa da nota de recomendação']}**, subtraindo **{causa_bot['Gap']:.2f} pontos**.")
+                st.markdown(f"**No nível de CAUSAS:**")
+                st.markdown(f"* A principal causa objetiva que eleva o NPS é **{causa_top['Causa da nota de recomendação']}**, gerando um impacto positivo de **{causa_top['Gap']:.2f} pontos**.")
+                st.markdown(f"* Por outro lado, a causa que mais prejudica a nota atual é **{causa_bot['Causa da nota de recomendação']}**, subtraindo **{causa_bot['Gap']:.2f} pontos**.")
+
+            df_subcausas_obj = df_subcausas_resumo[~df_subcausas_resumo['Subcausa da nota de recomendação'].isin(termos_omitir_graficos)]
+            if not df_subcausas_obj.empty:
+                df_subcausas_obj['Gap'] = pd.to_numeric(df_subcausas_obj['Gap'], errors='coerce').fillna(0.0)
+                sub_top = df_subcausas_obj.loc[df_subcausas_obj['Gap'].idxmax()]
+                sub_bot = df_subcausas_obj.loc[df_subcausas_obj['Gap'].idxmin()]
+                st.markdown(f"**No nível de SUBCAUSAS:**")
+                st.markdown(f"* A subcausa com melhor desempenho é **{sub_top['Subcausa da nota de recomendação']}** (Impacto de **{sub_top['Gap']:.2f} pontos**).")
+                st.markdown(f"* O maior ofensor específico é **{sub_bot['Subcausa da nota de recomendação']}** (Impacto de **{sub_bot['Gap']:.2f} pontos**).")
 
             # 3. Quebra de Segmentos (+ / -) e Potencial
             st.header("3. Oportunidades de Reversão (+ e -)")
@@ -339,6 +352,17 @@ if tipo_analise == "Resumo Executivo":
                     st.markdown(f"**Fortaleza:** A **{best_reg['Região']}** é o maior motor do resultado, contribuindo com **{best_reg['Gap']:.2f} pontos** adicionais.")
                     st.markdown(f"**Fraqueza:** A **{worst_reg['Região']}** é a maior ofendora, derrubando o NPS em **{worst_reg['Gap']:.2f} pontos**.")
             
+            # 5. Revisões (Apenas PV)
+            if dep_prefix == "PV" and not df_rev.empty:
+                st.header("5. Impacto do Ciclo de Revisões")
+                df_rev_tot = df_rev[~df_rev['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Ciclo').agg({'NPS':'mean', 'Gap':'sum', 'N_valido':'sum'}).reset_index()
+                if not df_rev_tot.empty:
+                    best_rev = df_rev_tot.loc[df_rev_tot['Gap'].idxmax()]
+                    worst_rev = df_rev_tot.loc[df_rev_tot['Gap'].idxmin()]
+                    nps_medio_rev = df_rev_tot['NPS'].mean()
+                    st.markdown(f"A revisão que mais agrega valor é a **{best_rev['Ciclo']}** (NPS: {best_rev['NPS']:.1f}).")
+                    st.markdown(f"A revisão com maior desgaste é a **{worst_rev['Ciclo']}** (NPS: {worst_rev['NPS']:.1f}).")
+                    st.markdown(f"**Evolução Potencial:** Se a {worst_rev['Ciclo']} fosse nivelada à média do ciclo ({nps_medio_rev:.1f}), o NPS total de Pós-Vendas sofreria um ganho substancial de volume qualificado.")
         except Exception as e:
             st.warning(f"Erro ao compilar métricas do resumo executivo. Verifique a estrutura das planilhas.")
     else:
@@ -600,10 +624,9 @@ elif tipo_analise == "Ciclo de Revisões":
             if not df_cons.empty:
                 exibir_tamanho_amostra(df_cons)
                 
-                # Prepara dados de Evolução
                 vol_col = next((c for c in ['N_valido', 'Respondentes', 'Volume (N)', 'Volume'] if c in df_cons.columns), 'Volume')
                 df_cons['NPS'] = pd.to_numeric(df_cons['NPS'], errors='coerce').fillna(0.0)
-                if vol_col not in df_cons.columns: df_cons[vol_col] = 1 # Fake weight caso não exista
+                if vol_col not in df_cons.columns: df_cons[vol_col] = 1 
                 else: df_cons[vol_col] = pd.to_numeric(df_cons[vol_col], errors='coerce').fillna(0.0)
                 
                 nps_evol = df_cons[~df_cons['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Ciclo').agg({'NPS':'mean', vol_col:'sum'}).reset_index()
@@ -612,14 +635,12 @@ elif tipo_analise == "Ciclo de Revisões":
                 nps_evol = nps_evol.sort_values('Ciclo').reset_index(drop=True)
                 
                 if 'NPS' in nps_evol.columns:
-                    # Identifica a Maior Queda
                     nps_evol['Drop'] = nps_evol['NPS'].diff()
                     if len(nps_evol) > 1:
                         maior_queda_idx = nps_evol['Drop'].idxmin()
                         if pd.notna(maior_queda_idx):
-                            st.info(f"💡 **Insight de Desgaste:** A maior queda na satisfação do cliente ocorre entre a **{nps_evol.loc[maior_queda_idx - 1, 'Ciclo']}** e a **{nps_evol.loc[maior_queda_idx, 'Ciclo']}**, com uma perda de **{abs(nps_evol.loc[maior_queda_idx, 'Drop']):.1f} pontos** de NPS. Este é o ponto crítico de intervenção.")
+                            st.info(f"💡 **Insight de Desgaste:** A maior queda na satisfação do cliente ocorre entre a **{nps_evol.loc[maior_queda_idx - 1, 'Ciclo']}** e a **{nps_evol.loc[maior_queda_idx, 'Ciclo']}**, com uma perda de **{abs(nps_evol.loc[maior_queda_idx, 'Drop']):.1f} pontos** de NPS.")
 
-                    # Simulação de Nivelamento
                     nps_medio_rev = (nps_evol['NPS'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS'].mean()
                     
                     fig = px.line(nps_evol, x='Ciclo', y='NPS', markers=True, text=[f"{x:.1f}" for x in nps_evol['NPS']], title="Evolução do NPS Médio por Ciclo")
