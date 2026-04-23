@@ -359,7 +359,7 @@ termos_omitir_graficos = ['-', 'Não especificada', 'Nenhuma das opções acima'
 # ==========================================
 if tipo_analise == "Contribuição Total":
     st.title(f"📊 Contribuição e Impactos: {departamento}")
-    t1, t2, t3, t4, t5 = st.tabs(["Geral", "Regiões", "Grupos", "Concessionárias", "Modelos"])
+    t1, t2, t3, t4, t5, t6 = st.tabs(["Geral", "Regiões", "Grupos", "Concessionárias", "Modelos", "Metodologia"])
     file = "Analise_NPS_Yamaha.xlsx"
 
     # --- ABA GERAL ---
@@ -476,13 +476,58 @@ if tipo_analise == "Contribuição Total":
         if dep_prefix == "VE": render_aba_comparativa("VE_Mod_C_Sub", 'Modelo')
         else: st.info("Análise de modelo disponível em 'Ciclo de Revisões'.")
 
+    # --- ABA METODOLOGIA (NOVA) ---
+    with t6:
+        st.header("Metodologia: Como Calculamos o Impacto")
+        st.markdown("""
+        O **Impacto (Gap)** revela se uma causa ou subcausa está puxando o NPS geral para cima (positivo) ou para baixo (negativo). Ele não olha apenas para a nota, mas considera a **representatividade (peso)** dessa causa no volume total de respostas da empresa.
+
+        ### Passo a Passo do Cálculo
+
+        **1. Contribuição Absoluta**
+        Primeiro, calculamos quanto a causa entrega em "pontos absolutos" para o NPS Final:
+        $Contribuição = \\left( \\frac{\\text{Respondentes da Causa}}{\\text{Respondentes Totais}} \\right) \\times \\text{NPS da Causa}$
+
+        **2. Participação no NPS (%)**
+        Depois, verificamos qual é a "fatia" que essa contribuição representa no NPS Final:
+        $Participação\\ no\\ NPS = \\left( \\frac{\\text{Contribuição da Causa}}{\\text{NPS Total}} \\right) \\times 100$
+
+        **3. Peso da Causa (%)**
+        Calculamos o peso que essa causa tem no volume total de entrevistas:
+        $Peso = \\left( \\frac{\\text{Respondentes da Causa}}{\\text{Respondentes Totais}} \\right) \\times 100$
+
+        **4. Impacto (Gap)**
+        Por fim, comparamos o que a causa **entrega** (Participação) com o que ela **custa** (Peso).
+        $Impacto = \\text{Participação no NPS} - \\text{Peso}$
+
+        ---
+
+        ### Exemplo Prático
+        Imagine que a Yamaha tem as seguintes métricas gerais num determinado período:
+        * **NPS Total:** 50
+        * **Respondentes Totais:** 1.000
+
+        Agora, vamos analisar a causa hipotética **"Entrega Técnica"**, que possui as seguintes métricas:
+        * **NPS da Entrega Técnica:** 80
+        * **Respondentes da Entrega Técnica:** 200
+
+        **Aplicando a fórmula:**
+        1. **Contribuição:** $(200 / 1000) \\times 80 = 0.2 \\times 80 = \\mathbf{16}$ *(A Entrega Técnica contribui com 16 pontos absolutos para os 50 totais do NPS)*
+        2. **Participação no NPS:** $(16 / 50) \\times 100 = \\mathbf{32\\%}$
+        3. **Peso:** $(200 / 1000) \\times 100 = \\mathbf{20\\%}$
+        4. **Impacto:** $32\\% - 20\\% = \\mathbf{+12}$
+
+        **Interpretação:**
+        A "Entrega Técnica" tem um **Impacto de +12**. Isso significa que, embora ela represente apenas 20% do volume de clientes (Peso), ela entrega 32% do resultado positivo do NPS. Trata-se de uma **"alavanca"** que puxa a nota geral para cima. 
+        Se o Impacto fosse negativo, significaria que ela estaria entregando menos valor do que o seu peso sugere, atuando como uma **"âncora"** e roubando pontos do NPS geral.
+        """)
+
 # --- ANÁLISE DE NEUTROS / DETRATORES ---
 elif tipo_analise in ["Análise de Neutros", "Análise de Detratores"]:
     foco = "Neutros" if "Neutros" in tipo_analise else "Detratores"
     file = f"Analise_{foco}_Yamaha.xlsx"
     st.title(f"⚖️ Potencial de Reversão: {foco} ({departamento})")
     
-    # Aba "Causas e Subcausas" agora é a ÚLTIMA da lista
     tabs = st.tabs(["Regiões", "Grupos", "Concessionárias", "Modelos", "Causas e Subcausas"])
     
     # === 1. ABAS COMPARATIVAS (Região, Grupo, Conc, Modelo) ===
