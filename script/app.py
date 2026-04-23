@@ -259,31 +259,20 @@ termos_omitir_graficos = ['-', 'Não especificada', 'Nenhuma das opções acima'
 # 4. LÓGICA DE VISUALIZAÇÃO
 # ==========================================
 
-# --- RESUMO EXECUTIVO ---
+# --- NOVO: RESUMO EXECUTIVO ---
 if tipo_analise == "Resumo Executivo":
     st.title(f"📑 Resumo Executivo: {departamento}")
     st.markdown("Esta página consolida os principais insights, cruzando dados de contribuição, detratores, neutros e revisões.")
     
     # Bases necessárias
     df_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Tot_C_Sub")
-    df_neu = ler_dados_nps_oficial("Analise_Neutros_Yamaha.xlsx", f"{dep_prefix}_Causas_Neutro")
-    df_det = ler_dados_nps_oficial("Analise_Detratores_Yamaha.xlsx", f"{dep_prefix}_Causas_Detrat")
     df_reg_pot = ler_dados_nps_oficial("Analise_Neutros_Yamaha.xlsx", f"{dep_prefix}_Potencial_Regiao")
     df_reg_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", f"{dep_prefix}_Reg_C_Sub" if dep_prefix=="VE" else "PV_Tot_Reg_C_Sub")
     df_rev = ler_dados_nps_oficial("Analise_Revisoes_Yamaha.xlsx", "Consolidado_PBI_Revisoes") if dep_prefix == "PV" else pd.DataFrame()
 
     if not df_tot.empty:
         try:
-            # 1. Cálculo real do NPS (Soma das contribuições, igual ao Waterfall)
-            df_causas_puras = df_tot[~df_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')]
-            nps_atual = df_causas_puras['Contribuição'].sum()
-            
-            # 1. Visão Geral
-            st.header("1. Panorama Geral do NPS")
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("NPS Atual", f"{nps_atual:.1f}")
-            
-            # Buscando composição Exata na linha 'TOTAL NACIONAL' da aba de Regiões
+            # 1. Cálculo real do NPS e Componentes (Garantia Matemática)
             val_pro, val_neu, val_det = 0.0, 0.0, 0.0
             pct_neu_plus, pct_neu_minus, pct_det_plus, pct_det_minus = 0.0, 0.0, 0.0, 0.0
             
@@ -299,19 +288,19 @@ if tipo_analise == "Resumo Executivo":
                         elif 'DETRATOR+' in c_upper: pct_det_plus = val
                         elif 'DETRATOR-' in c_upper: pct_det_minus = val
                         elif 'PROMOTOR' in c_upper: val_pro = val
-                        elif 'NEUTRO' in c_upper: val_neu = val
-                        elif 'DETRATOR' in c_upper: val_det = val
+                        elif 'NEUTRO' in c_upper and '+' not in c_upper and '-' not in c_upper: val_neu = val
+                        elif 'DETRATOR' in c_upper and '+' not in c_upper and '-' not in c_upper: val_det = val
 
-            # Fallbacks caso as colunas agrupadas não existam, mas as quebradas sim
             if val_neu == 0.0 and (pct_neu_plus > 0 or pct_neu_minus > 0): val_neu = pct_neu_plus + pct_neu_minus
             if val_det == 0.0 and (pct_det_plus > 0 or pct_det_minus > 0): val_det = pct_det_plus + pct_det_minus
             
-            # Fallback matemático só em último caso (se não achar os arquivos extras)
-            if val_pro == 0.0 and val_det == 0.0:
-                val_pro = (nps_atual + 100) / 2
-                val_det = val_pro - nps_atual
-                val_neu = 100 - val_pro - val_det
+            # Recalcula o NPS Exato baseado em Promotores e Detratores para evitar o Bug de "0.0"
+            nps_atual = val_pro - val_det if val_pro > 0 else df_tot[~df_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')]['Contribuição'].sum()
 
+            # 1. Visão Geral
+            st.header("1. Panorama Geral do NPS")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("NPS Atual", f"{nps_atual:.1f}")
             c2.metric("Promotores", f"{val_pro:.1f}%")
             c3.metric("Neutros", f"{val_neu:.1f}%")
             c4.metric("Detratores", f"{val_det:.1f}%")
@@ -319,7 +308,6 @@ if tipo_analise == "Resumo Executivo":
             # 2. Causas Principais
             st.header("2. Alavancas e Âncoras Principais")
             df_causas_obj = df_tot[~df_tot['Causa da nota de recomendação'].isin(termos_omitir_graficos + ['Outro(s) motivo(s)', 'Não indicou motivo específico'])]
-            
             if not df_causas_obj.empty:
                 causa_top = df_causas_obj.loc[df_causas_obj['Gap'].idxmax()]
                 causa_bot = df_causas_obj.loc[df_causas_obj['Gap'].idxmin()]
@@ -328,12 +316,10 @@ if tipo_analise == "Resumo Executivo":
 
             # 3. Quebra de Segmentos (+ / -) e Potencial
             st.header("3. Oportunidades de Reversão (+ e -)")
-            
             st.markdown(f"**Composição Qualificada:**")
             st.markdown(f"* Os Neutros dividem-se em **Neutros+ ({pct_neu_plus:.1f}%)** e Neutros- ({pct_neu_minus:.1f}%).")
             st.markdown(f"* Os Detratores dividem-se em **Detratores+ ({pct_det_plus:.1f}%)** e Detratores- ({pct_det_minus:.1f}%).")
             
-            # Matemática do NPS Potencial
             nps_pot_neu = nps_atual + pct_neu_plus
             nps_pot_det = nps_atual + (2 * pct_det_plus)
             nps_pot_total = nps_atual + pct_neu_plus + (2 * pct_det_plus)
@@ -353,19 +339,8 @@ if tipo_analise == "Resumo Executivo":
                     st.markdown(f"**Fortaleza:** A **{best_reg['Região']}** é o maior motor do resultado, contribuindo com **{best_reg['Gap']:.2f} pontos** adicionais.")
                     st.markdown(f"**Fraqueza:** A **{worst_reg['Região']}** é a maior ofendora, derrubando o NPS em **{worst_reg['Gap']:.2f} pontos**.")
             
-            # 5. Revisões (Apenas PV)
-            if dep_prefix == "PV" and not df_rev.empty:
-                st.header("5. Impacto do Ciclo de Revisões")
-                df_rev_tot = df_rev[~df_rev['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Ciclo').agg({'NPS':'mean', 'Gap':'sum', 'N_valido':'sum'}).reset_index()
-                if not df_rev_tot.empty:
-                    best_rev = df_rev_tot.loc[df_rev_tot['Gap'].idxmax()]
-                    worst_rev = df_rev_tot.loc[df_rev_tot['Gap'].idxmin()]
-                    nps_medio_rev = df_rev_tot['NPS'].mean()
-                    st.markdown(f"A revisão que mais agrega valor é a **{best_rev['Ciclo']}** (NPS: {best_rev['NPS']:.1f}).")
-                    st.markdown(f"A revisão com maior desgaste é a **{worst_rev['Ciclo']}** (NPS: {worst_rev['NPS']:.1f}).")
-                    st.markdown(f"**Evolução Potencial:** Se a {worst_rev['Ciclo']} fosse nivelada à média do ciclo ({nps_medio_rev:.1f}), o NPS total de Pós-Vendas sofreria um ganho substancial de volume qualificado.")
         except Exception as e:
-            st.warning(f"Erro ao compilar algumas métricas do resumo executivo. Verifique se as planilhas base estão completas.")
+            st.warning(f"Erro ao compilar métricas do resumo executivo. Verifique a estrutura das planilhas.")
     else:
         st.info("Bases de dados não encontradas para gerar o Resumo Executivo.")
 
@@ -484,55 +459,43 @@ elif tipo_analise == "Contribuição Total":
         if dep_prefix == "VE": render_aba_comparativa("VE_Mod_C_Sub", 'Modelo')
         else: st.info("Análise de modelo disponível em 'Ciclo de Revisões'.")
 
-    # --- ABA METODOLOGIA RESTAURADA NA ÍNTEGRA ---
+    # --- ABA METODOLOGIA RESTAURADA E COMPLETA ---
     with t6:
-        st.header("Metodologia: Como Calculamos o Impacto")
+        st.header("Metodologia Insights&Etc")
+        
+        st.subheader("1. Como Calculamos o Impacto (Gap)")
         st.markdown("""
-        O **Impacto (Gap)** revela se uma causa ou subcausa está puxando o NPS geral para cima (positivo) ou para baixo (negativo). Ele não olha apenas para a nota, mas considera a **representatividade (peso)** dessa causa no volume total de respostas da empresa.
-
-        ### Passo a Passo do Cálculo
-
-        **1. Contribuição Absoluta**
-        Primeiro, calculamos quanto a causa entrega em "pontos absolutos" para o NPS Final:
-        $Contribuição = \\left( \\frac{\\text{Respondentes da Causa}}{\\text{Respondentes Totais}} \\right) \\times \\text{NPS da Causa}$
-
-        **2. Participação no NPS (%)**
-        Depois, verificamos qual é a "fatia" que essa contribuição representa no NPS Final:
-        $Participação\\ no\\ NPS = \\left( \\frac{\\text{Contribuição da Causa}}{\\text{NPS Total}} \\right) \\times 100$
-
-        **3. Peso da Causa (%)**
-        Calculamos o peso que essa causa tem no volume total de entrevistas:
-        $Peso = \\left( \\frac{\\text{Respondentes da Causa}}{\\text{Respondentes Totais}} \\right) \\times 100$
-
-        **4. Impacto (Gap)**
-        Por fim, comparamos o que a causa **entrega** (Participação) com o que ela **custa** (Peso).
-        $Impacto = \\text{Participação no NPS} - \\text{Peso}$
-
+        O **Impacto (Gap)** revela se uma causa está puxando o NPS geral para cima (positivo) ou para baixo (negativo), ponderando a **representatividade** da causa no volume total.
+        * **1. Contribuição Absoluta:** $Contribuição = \\left( \\frac{\\text{N da Causa}}{\\text{N Total}} \\right) \\times \\text{NPS da Causa}$
+        * **2. Participação:** $Part = \\left( \\frac{\\text{Contribuição}}{\\text{NPS Total}} \\right) \\times 100$
+        * **3. Peso:** $Peso = \\left( \\frac{\\text{N da Causa}}{\\text{N Total}} \\right) \\times 100$
+        * **4. Impacto (Gap):** $Impacto = Part - Peso$
+        
         ---
-
+        
         ### Exemplo Prático
         Imagine que a Yamaha tem as seguintes métricas gerais num determinado período:
         * **NPS Total:** 50
         * **Respondentes Totais:** 1.000
 
-        Agora, vamos analisar a causa hipotética **"Entrega Técnica"**, que possui as seguintes métricas:
+        Analisando a causa **"Entrega Técnica"**, que possui:
         * **NPS da Entrega Técnica:** 80
         * **Respondentes da Entrega Técnica:** 200
 
         **Aplicando a fórmula:**
-        1. **Contribuição:** $(200 / 1000) \\times 80 = 0.2 \\times 80 = \\mathbf{16}$ *(A Entrega Técnica contribui com 16 pontos absolutos para os 50 totais do NPS)*
+        1. **Contribuição:** $(200 / 1000) \\times 80 = 0.2 \\times 80 = \\mathbf{16}$ *(A Entrega contribui com 16 pontos absolutos para os 50 totais do NPS)*
         2. **Participação no NPS:** $(16 / 50) \\times 100 = \\mathbf{32\\%}$
         3. **Peso:** $(200 / 1000) \\times 100 = \\mathbf{20\\%}$
         4. **Impacto:** $32\\% - 20\\% = \\mathbf{+12}$
 
         **Interpretação:**
-        A "Entrega Técnica" tem um **Impacto de +12**. Isso significa que, embora ela represente apenas 20% do volume de clientes (Peso), ela entrega 32% do resultado positivo do NPS. Trata-se de uma **"alavanca"** que puxa a nota geral para cima. 
-        Se o Impacto fosse negativo, significaria que ela estaria entregando menos valor do que o seu peso sugere, atuando como uma **"âncora"** e roubando pontos do NPS geral.
+        A "Entrega Técnica" tem um **Impacto de +12**. Isso significa que, embora represente apenas 20% do volume de clientes (Peso), ela entrega 32% do resultado positivo do NPS. É uma **"alavanca"** que puxa a nota para cima.
+        """)
         
-        ---
-        
-        ### Quebras Estatísticas: O Poder do '+' e '-'
-        Em pesquisas de satisfação de alto rigor, olhar apenas para o "bloco" esconde oportunidades de rápido retorno (Quick Wins). Por isso, dividimos as categorias:
+        st.markdown("---")
+        st.subheader("2. Quebras Estatísticas: O Poder do '+' e '-'")
+        st.markdown("""
+        Olhar apenas para o bloco inteiro esconde oportunidades de rápido retorno (Quick Wins). Por isso, dividimos as categorias:
         
         * **Promotores (Notas 9 e 10):** Clientes leais que recomendam a marca.
         * **Neutros+ (Nota 8):** Clientes quase promotores. Precisam de um leve encantamento para virar promotores.
@@ -616,7 +579,7 @@ elif tipo_analise in ["Análise de Neutros", "Análise de Detratores"]:
             mostrar_tabela_formatada(df_causas_nd, f"{foco}_Causas.xlsx", hide_cols=['Ganho Possível', 'Potencial'])
         else: st.info("Nenhum dado de causas detalhadas encontrado para este segmento.")
 
-# --- CICLO DE REVISÕES ---
+# --- CICLO DE REVISÕES COM SIMULAÇÃO ---
 elif tipo_analise == "Ciclo de Revisões":
     if dep_prefix == "VE":
         st.title("🔧 Ciclo de Revisões")
@@ -625,6 +588,9 @@ elif tipo_analise == "Ciclo de Revisões":
         file = "Analise_Revisoes_Yamaha.xlsx"
         df_cons = aplicar_filtros_globais(ler_dados_nps_oficial(file, "Consolidado_PBI_Revisoes"), f_causa, f_sub, f_nps, f_imp)
         st.title("🔧 Ciclo de Revisões (Pós-Vendas)")
+        st.markdown("""
+        Nesta análise, acompanhamos a jornada de manutenção do cliente. **É natural que o NPS apresente uma tendência de queda** à medida que as revisões avançam. Isso ocorre porque a motocicleta envelhece, os serviços tornam-se mais complexos e as peças fora da garantia encarecem o processo. O ponto de atenção é identificar **onde ocorre a queda mais brusca** para atuar de forma preventiva.
+        """)
         
         if not df_cons.empty:
             if 'Modelo' in df_cons.columns:
@@ -633,15 +599,65 @@ elif tipo_analise == "Ciclo de Revisões":
 
             if not df_cons.empty:
                 exibir_tamanho_amostra(df_cons)
+                
+                # Prepara dados de Evolução
+                vol_col = next((c for c in ['N_valido', 'Respondentes', 'Volume (N)', 'Volume'] if c in df_cons.columns), 'Volume')
                 df_cons['NPS'] = pd.to_numeric(df_cons['NPS'], errors='coerce').fillna(0.0)
-                nps_evol = df_cons[~df_cons['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Ciclo')['NPS'].mean().reset_index()
+                if vol_col not in df_cons.columns: df_cons[vol_col] = 1 # Fake weight caso não exista
+                else: df_cons[vol_col] = pd.to_numeric(df_cons[vol_col], errors='coerce').fillna(0.0)
+                
+                nps_evol = df_cons[~df_cons['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Ciclo').agg({'NPS':'mean', vol_col:'sum'}).reset_index()
                 ordem = ['Revisão 1', 'Revisão 2', 'Revisão 3', 'Revisão 4', 'Revisão 5 ou +']
                 nps_evol['Ciclo'] = pd.Categorical(nps_evol['Ciclo'], categories=ordem, ordered=True)
-                nps_evol = nps_evol.sort_values('Ciclo')
+                nps_evol = nps_evol.sort_values('Ciclo').reset_index(drop=True)
+                
                 if 'NPS' in nps_evol.columns:
+                    # Identifica a Maior Queda
+                    nps_evol['Drop'] = nps_evol['NPS'].diff()
+                    if len(nps_evol) > 1:
+                        maior_queda_idx = nps_evol['Drop'].idxmin()
+                        if pd.notna(maior_queda_idx):
+                            st.info(f"💡 **Insight de Desgaste:** A maior queda na satisfação do cliente ocorre entre a **{nps_evol.loc[maior_queda_idx - 1, 'Ciclo']}** e a **{nps_evol.loc[maior_queda_idx, 'Ciclo']}**, com uma perda de **{abs(nps_evol.loc[maior_queda_idx, 'Drop']):.1f} pontos** de NPS. Este é o ponto crítico de intervenção.")
+
+                    # Simulação de Nivelamento
+                    nps_medio_rev = (nps_evol['NPS'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS'].mean()
+                    
                     fig = px.line(nps_evol, x='Ciclo', y='NPS', markers=True, text=[f"{x:.1f}" for x in nps_evol['NPS']], title="Evolução do NPS Médio por Ciclo")
-                    fig.update_traces(textposition="top center")
+                    fig.update_traces(textposition="top center", line=dict(color=COR_TURQUESA, width=3), marker=dict(size=10, color=COR_LARANJA))
+                    fig.add_hline(y=nps_medio_rev, line_dash="dot", line_color="gray", annotation_text=f"Média ({nps_medio_rev:.1f})")
                     st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.subheader("🎯 Simulação de Nivelamento (Potencial)")
+                    st.markdown(f"Se as revisões com desempenho **abaixo da média ({nps_medio_rev:.1f})** fossem melhoradas para atingir exatamente a média do ciclo, qual seria o impacto global?")
+                    
+                    nps_evol['NPS_Simulado'] = nps_evol.apply(lambda row: nps_medio_rev if row['NPS'] < nps_medio_rev else row['NPS'], axis=1)
+                    nps_rev_simulado = (nps_evol['NPS_Simulado'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS_Simulado'].mean()
+                    nps_rev_atual = (nps_evol['NPS'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS'].mean()
+                    
+                    df_pv_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", "PV_Tot_C_Sub")
+                    nps_pv_atual, nps_pv_simulado = 0.0, 0.0
+                    if not df_pv_tot.empty:
+                        vol_pv_col = next((c for c in ['N_valido', 'Respondentes', 'Volume', 'Volume (N)'] if c in df_pv_tot.columns), None)
+                        if vol_pv_col:
+                            mask_tot = df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().isin(['-', 'TOTAL', 'TOTAL DA CAUSA'])
+                            if mask_tot.any():
+                                n_pv_total = df_pv_tot[mask_tot][vol_pv_col].sum()
+                                nps_pv_atual = df_pv_tot[mask_tot]['NPS'].mean()
+                            else:
+                                n_pv_total = df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')][vol_pv_col].sum()
+                                if n_pv_total > 0: nps_pv_atual = (df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')]['NPS'] * df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')][vol_pv_col]).sum() / n_pv_total
+                            
+                            if n_pv_total > 0:
+                                gap_pontos_rev = ((nps_evol['NPS_Simulado'] - nps_evol['NPS']) * nps_evol[vol_col]).sum()
+                                nps_pv_simulado = nps_pv_atual + (gap_pontos_rev / n_pv_total)
+                    
+                    col_s1, col_s2 = st.columns(2)
+                    col_s1.metric("NPS Total de Revisões", f"{nps_rev_simulado:.1f}", f"+{(nps_rev_simulado - nps_rev_atual):.1f} pontos vs. Atual ({nps_rev_atual:.1f})")
+                    if nps_pv_atual != 0.0: col_s2.metric("NPS Total Pós-Vendas (PV)", f"{nps_pv_simulado:.1f}", f"+{(nps_pv_simulado - nps_pv_atual):.1f} pontos vs. Atual ({nps_pv_atual:.1f})")
+                    else: col_s2.info("Base total de PV não encontrada para extrapolação.")
+                
+                st.markdown("---")
                 rev_sel = st.selectbox("Detalhar Revisão", ordem)
                 df_det = df_cons[df_cons['Ciclo'] == rev_sel]
                 mostrar_tabela_formatada(df_det.drop(columns=['Ciclo', 'Aba_Origem'], errors='ignore'), "Detalhe_Revisoes.xlsx")
