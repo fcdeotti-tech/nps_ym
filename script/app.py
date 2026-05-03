@@ -11,16 +11,6 @@ import re
 # ==========================================
 st.set_page_config(page_title="Yamaha NPS Explorer", layout="wide")
 
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Montserrat', sans-serif; }
-    h1, h2, h3 { font-family: 'Montserrat', sans-serif !important; font-weight: 700 !important; }
-    section[data-testid="stSidebar"] { background-color: #0A192F; color: white; }
-    section[data-testid="stSidebar"] .stMarkdown p { color: white; }
-    </style>
-""", unsafe_allow_html=True)
-
 COR_AZUL = "#0A192F"
 COR_TURQUESA = "#00D2D3"
 COR_LARANJA = "#FF6B6B"
@@ -31,6 +21,26 @@ CORES_SEGMENTOS = {
     'Neutros+': '#E9C46A',    
     'Promotores': '#2A9D8F'   
 }
+
+st.markdown(f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;900&display=swap');
+    html, body, [class*="css"] {{ font-family: 'Montserrat', sans-serif; }}
+    h1, h2, h3 {{ font-family: 'Montserrat', sans-serif !important; font-weight: 700 !important; color: {COR_AZUL}; }}
+    section[data-testid="stSidebar"] {{ background-color: {COR_AZUL}; color: white; }}
+    section[data-testid="stSidebar"] .stMarkdown p {{ color: white; }}
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# CONEXÃO COM BANCO DE DADOS (SQL SERVER)
+# ==========================================
+# Ativar quando a base estiver no Azure SQL (Configurar .streamlit/secrets.toml)
+# try:
+#     conn = st.connection('sqlserver', type='sql')
+# except Exception as e:
+#     st.warning("Conexão ao Azure SQL Server não estabelecida. Lendo em fallback mode (Arquivos Locais).")
+#     conn = None
 
 # ==========================================
 # FUNÇÕES DE GRÁFICOS E UTILITÁRIOS
@@ -44,7 +54,7 @@ def gerar_grafico_impacto_corrigido(df_plot, col_y, altura=350):
     valores_x = df_plot['Impacto'].tolist()
     cores = [COR_LARANJA if val < 0 else COR_TURQUESA for val in valores_x]
     textos = [f"{val:.3f}" if abs(val) > 0 and abs(val) < 0.1 else f"{val:.1f}" for val in valores_x]
-    fig = go.Figure(go.Bar(x=valores_x, y=eixo_y, orientation='h', marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)))
+    fig = go.Figure(go.Bar(x=valores_x, y=eixo_y, orientation='h', marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11, family='Montserrat')))
     max_abs = max([abs(v) for v in valores_x]) if valores_x else 1.0
     fig.update_layout(xaxis=dict(range=[-max_abs*1.3, max_abs*1.3], zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=False), yaxis=dict(tickfont=dict(size=11)), plot_bgcolor='rgba(0,0,0,0)', margin=dict(l=10, r=40, t=30, b=30), height=max(altura, len(valores_x) * 22))
     return fig
@@ -71,7 +81,7 @@ def gerar_grafico_nps_barras(df, col_x, titulo="NPS"):
     y_vals = df_plot['NPS'].tolist()
     cores = [COR_TURQUESA if v >= 0 else COR_LARANJA for v in y_vals]
     textos = [f"{v:.1f}" for v in y_vals]
-    fig = go.Figure(go.Bar(x=x_vals, y=y_vals, marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)))
+    fig = go.Figure(go.Bar(x=x_vals, y=y_vals, marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11, family='Montserrat')))
     fig.update_layout(title=titulo, plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(zeroline=True, zerolinewidth=2, zerolinecolor='gray', showgrid=True, gridcolor='#E5E7EB'), xaxis=dict(tickangle=-45), height=400, margin=dict(t=50, b=100))
     return fig
 
@@ -84,7 +94,7 @@ def gerar_grafico_colunas_comparativo(df, col_dimensao, causa):
     valores_y = df_plot['Impacto'].tolist()
     cores = [COR_LARANJA if val < 0 else COR_TURQUESA for val in valores_y]
     textos = [f"{val:.3f}" if abs(val) > 0 and abs(val) < 0.1 else f"{val:.1f}" for val in valores_y]
-    fig = go.Figure(go.Bar(x=eixo_x, y=valores_y, marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11)))
+    fig = go.Figure(go.Bar(x=eixo_x, y=valores_y, marker_color=cores, text=textos, textposition='outside', cliponaxis=False, textfont=dict(size=11, family='Montserrat')))
     max_abs = max([abs(v) for v in valores_y]) if valores_y else 1.0
     fig.update_layout(title=f"Impacto por {col_dimensao}: {causa}", plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(range=[-max_abs*1.3, max_abs*1.3], zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)', showgrid=True, gridcolor='#E5E7EB'), xaxis=dict(tickangle=-45), height=400, margin=dict(t=50, b=100))
     return fig
@@ -109,7 +119,7 @@ def gerar_grafico_distribuicao_segmentos(df, col_dimensao):
             x_vals = pd.to_numeric(df_plot[col_excel], errors='coerce').fillna(0).tolist()
             y_vals = df_plot[col_dimensao].astype(str).tolist()
             fig.add_trace(go.Bar(name=label, y=y_vals, x=x_vals, orientation='h', marker_color=CORES_SEGMENTOS[label], text=[f"{v:.0f}%" if v >= 5 else "" for v in x_vals], textposition='inside'))
-    fig.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title="Distribuição %", range=[0, 100], showgrid=False, zeroline=False), yaxis=dict(tickfont=dict(size=11)), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), margin=dict(l=10, r=40, t=50, b=20), height=max(350, len(df_plot) * 35))
+    fig.update_layout(barmode='stack', plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(title="Distribuição %", range=[0, 100], showgrid=False, zeroline=False), yaxis=dict(tickfont=dict(size=11, family='Montserrat')), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), margin=dict(l=10, r=40, t=50, b=20), height=max(350, len(df_plot) * 35))
     return fig
 
 # ==========================================
@@ -141,7 +151,8 @@ if not st.session_state["autenticado"]:
         st.button("Entrar", on_click=verificar_login)
         if st.session_state.get("erro_login"): st.error("Credenciais inválidas.")
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown(f'<div style="text-align: left; font-family: Montserrat;"><span style="font-weight:700; font-size:16px;">INSIGHTS</span><span style="color:#FF6B6B; font-weight:900; font-size:18px;">&</span><span style="font-weight:400; font-size:14px;">Etc</span></div>', unsafe_allow_html=True)
+        # Identidade de Marca Insights&Etc Documentada
+        st.markdown(f'<div style="text-align: left; font-family: Montserrat;"><span style="font-weight:700; font-size:16px;">INSIGHTS</span><span style="color:{COR_LARANJA}; font-weight:900; font-size:18px;">&</span><span style="font-weight:400; font-size:14px;">Etc</span></div>', unsafe_allow_html=True)
     st.stop()
 
 # ==========================================
@@ -161,6 +172,16 @@ OUTPUT_DIR = os.path.join(os.path.dirname(BASE_DIR), 'output')
 
 @st.cache_data
 def ler_dados_nps_oficial(file_name, sheet_name):
+    # [TODO_MIGRATION] -> Quando a Azure for liberada, comente a leitura do Excel e substitua por:
+    # if conn is not None:
+    #     try:
+    #         query = f"SELECT * FROM [dbo].[{sheet_name}]"
+    #         df = conn.query(query)
+    #         return df
+    #     except Exception as e:
+    #         st.error(f"Erro ao ler banco SQL: {e}")
+    #         return pd.DataFrame()
+    
     path = os.path.join(OUTPUT_DIR, file_name)
     if os.path.exists(path):
         try:
@@ -182,7 +203,7 @@ def convert_df_to_excel(df):
 def exibir_tamanho_amostra(df):
     if df.empty: return
     n = next((df[c].sum() for c in ['N_valido', 'Respondentes', 'Volume (N)', 'Volume'] if c in df.columns), 0)
-    st.markdown(f"<div style='text-align: right; font-size: 13px; color: #888; margin-bottom: 5px;'>Tamanho da Amostra (N): <b>{int(n):,}</b></div>".replace(',', '.'), unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: right; font-size: 13px; color: #888; margin-bottom: 5px; font-family: Montserrat;'>Tamanho da Amostra (N): <b>{int(n):,}</b></div>".replace(',', '.'), unsafe_allow_html=True)
 
 def mostrar_tabela_formatada(df, filename_download="dados.xlsx", hide_cols=None):
     if df.empty: return st.info("Sem dados.")
@@ -425,7 +446,7 @@ elif tipo_analise == "Contribuição Total":
                 for d in deltas: bases.append(atual); atual += d
                 bases.append(0)
                 colors = ["#1f77b4" if c=="NPS Total" else ("#808080" if "motivo" in c else (COR_TURQUESA if v>=0 else COR_LARANJA)) for c, v in zip(x_vals, y_vals)]
-                fig_wf = go.Figure(go.Bar(x=x_vals, y=y_vals, base=bases, marker_color=colors, text=[f"{v:.1f}" for v in y_vals], textposition='outside'))
+                fig_wf = go.Figure(go.Bar(x=x_vals, y=y_vals, base=bases, marker_color=colors, text=[f"{v:.1f}" for v in y_vals], textposition='outside', textfont=dict(family='Montserrat')))
                 fig_wf.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)', height=400)
                 st.plotly_chart(fig_wf, use_container_width=True)
 
@@ -489,7 +510,7 @@ elif tipo_analise == "Contribuição Total":
         if dep_prefix == "VE": render_aba_comparativa("VE_Mod_C_Sub", 'Modelo')
         else: st.info("Análise de modelo disponível em 'Ciclo de Revisões'.")
 
-    # --- ABA METODOLOGIA ---
+    # --- ABA METODOLOGIA RESTAURADA E COMPLETA ---
     with t6:
         st.header("Metodologia Insights&Etc")
         
@@ -637,9 +658,10 @@ elif tipo_analise == "Ciclo de Revisões":
         """)
         
         if not df_cons.empty:
+            # Remoção definitiva de 'Modelo' em PV para evitar distorções
             if 'Modelo' in df_cons.columns:
                 df_cons = df_cons.drop(columns=['Modelo'])
-                df_cons = df_cons.drop_duplicates()
+            df_cons = df_cons.drop_duplicates()
 
             if not df_cons.empty:
                 exibir_tamanho_amostra(df_cons)
@@ -649,69 +671,97 @@ elif tipo_analise == "Ciclo de Revisões":
                 if vol_col not in df_cons.columns: df_cons[vol_col] = 1 
                 else: df_cons[vol_col] = pd.to_numeric(df_cons[vol_col], errors='coerce').fillna(0.0)
                 
-                nps_evol = df_cons[~df_cons['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Ciclo').agg({'NPS':'mean', vol_col:'sum'}).reset_index()
-                ordem = ['Revisão 1', 'Revisão 2', 'Revisão 3', 'Revisão 4', 'Revisão 5 ou +']
-                nps_evol['Ciclo'] = pd.Categorical(nps_evol['Ciclo'], categories=ordem, ordered=True)
-                nps_evol = nps_evol.sort_values('Ciclo').reset_index(drop=True)
+                tab_evol, tab_conc = st.tabs(["Evolução e Simulação", "Desempenho por Concessionária"])
                 
-                if 'NPS' in nps_evol.columns:
-                    nps_evol['Drop'] = nps_evol['NPS'].diff()
-                    if len(nps_evol) > 1:
-                        maior_queda_idx = nps_evol['Drop'].idxmin()
-                        if pd.notna(maior_queda_idx):
-                            st.info(f"💡 **Insight de Desgaste:** A maior queda na satisfação do cliente ocorre entre a **{nps_evol.loc[maior_queda_idx - 1, 'Ciclo']}** e a **{nps_evol.loc[maior_queda_idx, 'Ciclo']}**, com uma perda de **{abs(nps_evol.loc[maior_queda_idx, 'Drop']):.1f} pontos** de NPS.")
+                with tab_evol:
+                    nps_evol = df_cons[~df_cons['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Ciclo').agg({'NPS':'mean', vol_col:'sum'}).reset_index()
+                    ordem = ['Revisão 1', 'Revisão 2', 'Revisão 3', 'Revisão 4', 'Revisão 5 ou +']
+                    nps_evol['Ciclo'] = pd.Categorical(nps_evol['Ciclo'], categories=ordem, ordered=True)
+                    nps_evol = nps_evol.sort_values('Ciclo').reset_index(drop=True)
+                    
+                    if 'NPS' in nps_evol.columns and len(nps_evol) > 0:
+                        nps_evol['Drop'] = nps_evol['NPS'].diff()
+                        if len(nps_evol) > 1:
+                            maior_queda_idx = nps_evol['Drop'].idxmin()
+                            if pd.notna(maior_queda_idx):
+                                st.info(f"💡 **Insight de Desgaste:** A maior queda na satisfação do cliente ocorre entre a **{nps_evol.loc[maior_queda_idx - 1, 'Ciclo']}** e a **{nps_evol.loc[maior_queda_idx, 'Ciclo']}**, com uma perda de **{abs(nps_evol.loc[maior_queda_idx, 'Drop']):.1f} pontos** de NPS.")
 
-                    nps_medio_rev = (nps_evol['NPS'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS'].mean()
-                    
-                    valores_x = nps_evol['Ciclo'].astype(str).tolist()
-                    valores_y = [float(v) for v in nps_evol['NPS']]
-                    textos = [f"{v:.1f}" for v in valores_y]
-                    
-                    fig = go.Figure(go.Scatter(
-                        x=valores_x, y=valores_y, mode='lines+markers+text',
-                        text=textos, textposition="top center",
-                        line=dict(color=COR_TURQUESA, width=3),
-                        marker=dict(size=10, color=COR_LARANJA)
-                    ))
-                    fig.add_hline(y=nps_medio_rev, line_dash="dot", line_color="gray", annotation_text=f"Média ({nps_medio_rev:.1f})")
-                    fig.update_layout(title="Evolução do NPS Médio por Ciclo", plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#E5E7EB'), height=400, margin=dict(t=50, b=50))
-                    st.plotly_chart(fig, use_container_width=True)
+                        nps_medio_rev = (nps_evol['NPS'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS'].mean()
+                        
+                        valores_x = nps_evol['Ciclo'].astype(str).tolist()
+                        valores_y = [float(v) for v in nps_evol['NPS']]
+                        textos = [f"{v:.1f}" for v in valores_y]
+                        
+                        fig = go.Figure(go.Scatter(
+                            x=valores_x, y=valores_y, mode='lines+markers+text',
+                            text=textos, textposition="top center",
+                            line=dict(color=COR_TURQUESA, width=3),
+                            marker=dict(size=10, color=COR_LARANJA),
+                            textfont=dict(family='Montserrat')
+                        ))
+                        fig.add_hline(y=nps_medio_rev, line_dash="dot", line_color="gray", annotation_text=f"Média ({nps_medio_rev:.1f})")
+                        fig.update_layout(title="Evolução do NPS Médio por Ciclo", plot_bgcolor='rgba(0,0,0,0)', xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#E5E7EB'), height=400, margin=dict(t=50, b=50))
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        st.markdown("---")
+                        st.subheader("🎯 Simulação de Nivelamento (Potencial)")
+                        st.markdown(f"Se as revisões com desempenho **abaixo da média ({nps_medio_rev:.1f})** fossem melhoradas para atingir exatamente a média do ciclo, qual seria o impacto global?")
+                        
+                        nps_evol['NPS_Simulado'] = nps_evol.apply(lambda row: nps_medio_rev if row['NPS'] < nps_medio_rev else row['NPS'], axis=1)
+                        nps_rev_simulado = (nps_evol['NPS_Simulado'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS_Simulado'].mean()
+                        nps_rev_atual = (nps_evol['NPS'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS'].mean()
+                        
+                        df_pv_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", "PV_Tot_C_Sub")
+                        nps_pv_atual, nps_pv_simulado = 0.0, 0.0
+                        if not df_pv_tot.empty:
+                            vol_pv_col = next((c for c in ['N_valido', 'Respondentes', 'Volume', 'Volume (N)'] if c in df_pv_tot.columns), None)
+                            if vol_pv_col:
+                                mask_tot = df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().isin(['-', 'TOTAL', 'TOTAL DA CAUSA'])
+                                if mask_tot.any():
+                                    n_pv_total = df_pv_tot[mask_tot][vol_pv_col].sum()
+                                    nps_pv_atual = df_pv_tot[mask_tot]['NPS'].mean()
+                                else:
+                                    n_pv_total = df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')][vol_pv_col].sum()
+                                    if n_pv_total > 0: nps_pv_atual = (df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')]['NPS'] * df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')][vol_pv_col]).sum() / n_pv_total
+                                
+                                if n_pv_total > 0:
+                                    gap_pontos_rev = ((nps_evol['NPS_Simulado'] - nps_evol['NPS']) * nps_evol[vol_col]).sum()
+                                    nps_pv_simulado = nps_pv_atual + (gap_pontos_rev / n_pv_total)
+                        
+                        col_s1, col_s2 = st.columns(2)
+                        col_s1.metric("NPS Total de Revisões", f"{nps_rev_simulado:.1f}", f"+{(nps_rev_simulado - nps_rev_atual):.1f} pontos vs. Atual ({nps_rev_atual:.1f})")
+                        if nps_pv_atual != 0.0: col_s2.metric("NPS Total Pós-Vendas (PV)", f"{nps_pv_simulado:.1f}", f"+{(nps_pv_simulado - nps_pv_atual):.1f} pontos vs. Atual ({nps_pv_atual:.1f})")
+                        else: col_s2.info("Base total de PV não encontrada para extrapolação.")
                     
                     st.markdown("---")
-                    st.subheader("🎯 Simulação de Nivelamento (Potencial)")
-                    st.markdown(f"Se as revisões com desempenho **abaixo da média ({nps_medio_rev:.1f})** fossem melhoradas para atingir exatamente a média do ciclo, qual seria o impacto global?")
-                    
-                    nps_evol['NPS_Simulado'] = nps_evol.apply(lambda row: nps_medio_rev if row['NPS'] < nps_medio_rev else row['NPS'], axis=1)
-                    nps_rev_simulado = (nps_evol['NPS_Simulado'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS_Simulado'].mean()
-                    nps_rev_atual = (nps_evol['NPS'] * nps_evol[vol_col]).sum() / nps_evol[vol_col].sum() if nps_evol[vol_col].sum() > 0 else nps_evol['NPS'].mean()
-                    
-                    df_pv_tot = ler_dados_nps_oficial("Analise_NPS_Yamaha.xlsx", "PV_Tot_C_Sub")
-                    nps_pv_atual, nps_pv_simulado = 0.0, 0.0
-                    if not df_pv_tot.empty:
-                        vol_pv_col = next((c for c in ['N_valido', 'Respondentes', 'Volume', 'Volume (N)'] if c in df_pv_tot.columns), None)
-                        if vol_pv_col:
-                            mask_tot = df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().isin(['-', 'TOTAL', 'TOTAL DA CAUSA'])
-                            if mask_tot.any():
-                                n_pv_total = df_pv_tot[mask_tot][vol_pv_col].sum()
-                                nps_pv_atual = df_pv_tot[mask_tot]['NPS'].mean()
-                            else:
-                                n_pv_total = df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')][vol_pv_col].sum()
-                                if n_pv_total > 0: nps_pv_atual = (df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')]['NPS'] * df_pv_tot[~df_pv_tot['Causa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')][vol_pv_col]).sum() / n_pv_total
-                            
-                            if n_pv_total > 0:
-                                gap_pontos_rev = ((nps_evol['NPS_Simulado'] - nps_evol['NPS']) * nps_evol[vol_col]).sum()
-                                nps_pv_simulado = nps_pv_atual + (gap_pontos_rev / n_pv_total)
-                    
-                    col_s1, col_s2 = st.columns(2)
-                    col_s1.metric("NPS Total de Revisões", f"{nps_rev_simulado:.1f}", f"+{(nps_rev_simulado - nps_rev_atual):.1f} pontos vs. Atual ({nps_rev_atual:.1f})")
-                    if nps_pv_atual != 0.0: col_s2.metric("NPS Total Pós-Vendas (PV)", f"{nps_pv_simulado:.1f}", f"+{(nps_pv_simulado - nps_pv_atual):.1f} pontos vs. Atual ({nps_pv_atual:.1f})")
-                    else: col_s2.info("Base total de PV não encontrada para extrapolação.")
+                    rev_sel = st.selectbox("Detalhar Revisão", ordem)
+                    df_det = df_cons[df_cons['Ciclo'] == rev_sel]
+                    df_det_view = df_det.drop(columns=['Ciclo', 'Aba_Origem'], errors='ignore').drop_duplicates()
+                    mostrar_tabela_formatada(df_det_view, "Detalhe_Revisoes.xlsx")
                 
-                st.markdown("---")
-                rev_sel = st.selectbox("Detalhar Revisão", ordem)
-                df_det = df_cons[df_cons['Ciclo'] == rev_sel]
-                df_det_view = df_det.drop(columns=['Ciclo', 'Aba_Origem'], errors='ignore').drop_duplicates()
-                mostrar_tabela_formatada(df_det_view, "Detalhe_Revisoes.xlsx")
+                with tab_conc:
+                    st.subheader("Ranking de Concessionárias nas Revisões")
+                    if 'Concessionária' in df_cons.columns:
+                        rev_sel_conc = st.selectbox("Selecione o Ciclo para o Ranking:", ['Todos'] + list(ordem), key='sel_rev_conc')
+                        
+                        if rev_sel_conc == 'Todos':
+                            df_plot_conc = df_cons[~df_cons['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL')].groupby('Concessionária').agg({'NPS':'mean', vol_col:'sum'}).reset_index()
+                        else:
+                            df_plot_conc = df_cons[(df_cons['Ciclo'] == rev_sel_conc) & (~df_cons['Subcausa da nota de recomendação'].astype(str).str.upper().str.startswith('TOTAL'))].groupby('Concessionária').agg({'NPS':'mean', vol_col:'sum'}).reset_index()
+                            
+                        # Trava de significância para ranking seguro
+                        df_plot_conc = df_plot_conc[df_plot_conc[vol_col] >= 5]
+                        
+                        if not df_plot_conc.empty:
+                            df_plot_conc = df_plot_conc.sort_values('NPS', ascending=False)
+                            fig_conc = gerar_grafico_nps_barras(df_plot_conc, 'Concessionária', f"NPS por Concessionária ({rev_sel_conc}) - N≥5")
+                            st.plotly_chart(fig_conc, use_container_width=True)
+                            
+                            st.dataframe(df_plot_conc.rename(columns={vol_col: 'Respondentes'}).style.format({'NPS': '{:.1f}'}), use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Não há dados suficientes (N≥5) para gerar o ranking de concessionárias neste ciclo.")
+                    else:
+                        st.info("A dimensão 'Concessionária' não está presente nesta base de dados.")
             else: st.info("Não há dados de Revisões após aplicar os filtros.")
         else: st.info("Arquivo de Ciclo de Revisões não encontrado ou vazio.")
 
@@ -719,5 +769,6 @@ elif tipo_analise == "Ciclo de Revisões":
 # FOOTER / INFO DA MARCA
 # ==========================================
 st.sidebar.markdown("---")
+# A assinatura Insights&Etc utilizando os guidelines da marca (Azul, Laranja e Turquesa)
 st.sidebar.markdown(f'<div style="text-align: center; font-family: Montserrat;"><span style="color:white; font-weight:700; font-size:18px;">INSIGHTS</span><span style="color:{COR_LARANJA}; font-weight:900; font-size:20px;">&</span><span style="color:#9CA3AF; font-weight:400; font-size:16px;">Etc</span></div>', unsafe_allow_html=True)
 st.sidebar.caption("<div style='text-align: center;'>Dashboard Seguro: Yamaha Motors</div>", unsafe_allow_html=True)
